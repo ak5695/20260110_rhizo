@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useChat } from "ai/react";
+import { useChat } from "ai";
 import { cn } from "@/lib/utils";
 import { Loader2, Sparkles, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
