@@ -14,10 +14,13 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { getById } from "@/actions/documents";
-defaultBlockSpecs,
+import {
+  defaultBlockSpecs,
   defaultProps,
-  filterSuggestionItems,
+  BlockNoteSchema,
+  defaultStyleSpecs,
 } from "@blocknote/core";
+import { filterSuggestionItems } from "@blocknote/core/extensions";
 import {
   createManualAnchor,
   acceptAiSuggestion,
@@ -199,7 +202,7 @@ const SemanticStyle = createReactStyleSpec(
     propSchema: "string",
   },
   {
-    render: ({ value, children, contentRef }) => {
+    render: ({ value, children, contentRef }: any) => {
       // Parse semantic data from JSON string
       let data = { anchorId: "", nodeId: "", provenance: "AI", isLocked: "false" };
       try {
