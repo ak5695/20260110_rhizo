@@ -13,7 +13,7 @@ export const nodeResolverService: INodeResolverService = {
         if (proposals.length === 0) return [];
 
         // 1. 批量拉取该用户下可能匹配的候选节点，优化数据库查询性能
-        const uniqueTitles = [...new Set(proposals.map(p => p.title))];
+        const uniqueTitles = Array.from(new Set(proposals.map(p => p.title)));
 
         const candidates = await db.query.semanticNodes.findMany({
             where: and(

@@ -1,5 +1,6 @@
 
 import { pgTable, text, integer, boolean, timestamp, uuid, index, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
 export const user = pgTable("user", {
     id: text("id").primaryKey(),
@@ -159,5 +160,53 @@ export const documentAuditLog = pgTable("document_audit_log", {
     }
 });
 
-// Self-reference foreign key definition needs to be careful, Drizzle handles it but strict constraint is good
-// We can modify it later if needed.
+// Relationships for Drizzle Query API
+export const documentsRelations = relations(documents, ({ one, many }) => ({
+    user: one(user, {
+        fields: [documents.userId],
+        references: [user.id],
+    }),
+    blocks: many(documentBlocks),
+}));
+
+export const documentBlocksRelations = relations(documentBlocks, ({ one, many }) => ({
+    document: one(documents, {
+        fields: [documentBlocks.documentId],
+        references: [documents.id],
+    }),
+    anchors: many(nodeSourceAnchors),
+}));
+
+export const semanticNodesRelations = relations(semanticNodes, ({ one, many }) => ({
+    user: one(user, {
+        fields: [semanticNodes.userId],
+        references: [user.id],
+    }),
+    anchors: many(nodeSourceAnchors),
+    outgoingEdges: many(semanticEdges, { relationName: "source" }),
+    incomingEdges: many(semanticEdges, { relationName: "target" }),
+}));
+
+export const nodeSourceAnchorsRelations = relations(nodeSourceAnchors, ({ one }) => ({
+    node: one(semanticNodes, {
+        fields: [nodeSourceAnchors.nodeId],
+        references: [semanticNodes.id],
+    }),
+    block: one(documentBlocks, {
+        fields: [nodeSourceAnchors.blockId],
+        references: [documentBlocks.id],
+    }),
+}));
+
+export const semanticEdgesRelations = relations(semanticEdges, ({ one }) => ({
+    source: one(semanticNodes, {
+        fields: [semanticEdges.sourceNodeId],
+        references: [semanticNodes.id],
+        relationName: "source",
+    }),
+    target: one(semanticNodes, {
+        fields: [semanticEdges.targetNodeId],
+        references: [semanticNodes.id],
+        relationName: "target",
+    }),
+}));

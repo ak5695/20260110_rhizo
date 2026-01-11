@@ -63,8 +63,8 @@ export const archive = async (id: string) => {
     if (archived.parentDocumentId) {
         try {
             const parent = await getDocumentWithVersion(archived.parentDocumentId, user.id);
-            if (parent && parent.content) {
-                let content = JSON.parse(parent.content);
+            if (parent && parent.document.content) {
+                let content = JSON.parse(parent.document.content);
                 if (Array.isArray(content)) {
                     const newContent = content.filter((block: any) =>
                         !(block.type === "page" && block.props?.pageId === id)
@@ -72,14 +72,14 @@ export const archive = async (id: string) => {
 
                     if (newContent.length !== content.length) {
                         await safeUpdateDocument({
-                            documentId: parent.id,
+                            documentId: parent.document.id,
                             updates: { content: JSON.stringify(newContent) },
                             options: {
                                 expectedVersion: parent.version,
                                 userId: user.id,
                             },
                         });
-                        await documentCache.invalidate(parent.id);
+                        await documentCache.invalidate(parent.document.id);
                     }
                 }
             }
@@ -136,7 +136,7 @@ export const create = async (args: { title: string, parentDocumentId?: string })
             if (parent) {
                 let content: any[] = [];
                 try {
-                    content = parent.content ? JSON.parse(parent.content) : [];
+                    content = parent.document.content ? JSON.parse(parent.document.content) : [];
                 } catch (e) {
                     content = [];
                 }
@@ -158,7 +158,7 @@ export const create = async (args: { title: string, parentDocumentId?: string })
                 content.push(pageBlock);
 
                 await safeUpdateDocument({
-                    documentId: parent.id,
+                    documentId: parent.document.id,
                     updates: { content: JSON.stringify(content) },
                     options: {
                         expectedVersion: parent.version,
@@ -167,7 +167,7 @@ export const create = async (args: { title: string, parentDocumentId?: string })
                 });
 
                 // Invalidate parent cache
-                await documentCache.invalidate(parent.id);
+                await documentCache.invalidate(parent.document.id);
             }
         } catch (error) {
             console.error("[NotionSync] Parent link injection failed:", error);
@@ -273,22 +273,22 @@ export const remove = async (id: string) => {
     if (deleted.parentDocumentId) {
         try {
             const parent = await getDocumentWithVersion(deleted.parentDocumentId, user.id);
-            if (parent && parent.content) {
-                let content = JSON.parse(parent.content);
+            if (parent && parent.document.content) {
+                let content = JSON.parse(parent.document.content);
                 if (Array.isArray(content)) {
                     const newContent = content.filter((block: any) =>
                         !(block.type === "page" && block.props?.pageId === id)
                     );
                     if (newContent.length !== content.length) {
                         await safeUpdateDocument({
-                            documentId: parent.id,
+                            documentId: parent.document.id,
                             updates: { content: JSON.stringify(newContent) },
                             options: {
                                 expectedVersion: parent.version,
                                 userId: user.id
                             }
                         });
-                        await documentCache.invalidate(parent.id);
+                        await documentCache.invalidate(parent.document.id);
                     }
                 }
             }

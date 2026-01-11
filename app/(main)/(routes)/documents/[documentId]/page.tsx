@@ -17,8 +17,8 @@ export default function DocumentIdPage() {
     [],
   );
 
-  const SemanticGraph = useMemo(
-    () => dynamic(() => import("@/components/semantic-graph-panel").then(mod => mod.SemanticGraphPanel), { ssr: false }),
+  const TldrawCanvas = useMemo(
+    () => dynamic(() => import("@/components/tldraw-canvas"), { ssr: false }),
     [],
   );
 
@@ -107,13 +107,13 @@ export default function DocumentIdPage() {
         </div>
       </div>
 
-      {/* 语义图谱区 (图谱 = 结构载体) */}
-      <div className="relative w-[525px] hidden lg:block group/resizer transition-all duration-500 overflow-visible">
-        {/* 对称分界阴影中轴 (Shadow Axis) - 更加细腻的过渡 */}
+      {/* Canvas 画布区 (可视化 = 图形载体) */}
+      <div className="relative w-[50%] hidden lg:block group/resizer transition-all duration-500 overflow-hidden">
+        {/* 分界线 */}
         <div className="absolute -left-[0.5px] top-0 bottom-0 w-[1px] bg-border/40 z-50 shadow-[0_0_30px_rgba(0,0,0,0.15)] pointer-events-none" />
 
         <div className="h-full border-l border-white/5 bg-background relative z-10">
-          <SemanticGraph documentId={documentId as string} />
+          <TldrawCanvas />
         </div>
       </div>
     </div>
