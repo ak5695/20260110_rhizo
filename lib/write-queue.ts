@@ -12,13 +12,7 @@
  */
 
 import { OptimisticLockError } from "./errors";
-
-// Import server-side functions only when needed (not at module level)
-// This prevents database connections in client-side code
-const getSafeUpdateFunctions = async () => {
-  const { safeUpdateDocument, withRetry } = await import("./safe-update");
-  return { safeUpdateDocument, withRetry };
-};
+import { update } from "@/actions/documents";
 
 /**
  * Pending write operation
@@ -255,30 +249,18 @@ class WriteQueueManager {
   }
 
   /**
-   * Execute the actual database write with retry
+   * Execute the actual database write using Server Action
    */
   private async executeWrite(pending: PendingWrite): Promise<void> {
-    const { documentId, updates, version, userId } = pending;
+    const { documentId, updates, version } = pending;
 
-    // Dynamically import server-side functions to avoid database connections in client code
-    const { safeUpdateDocument, withRetry } = await getSafeUpdateFunctions();
-
-    await withRetry(
-      () =>
-        safeUpdateDocument({
-          documentId,
-          updates,
-          options: {
-            expectedVersion: version,
-            userId,
-          },
-        }),
-      {
-        maxAttempts: this.MAX_RETRY_ATTEMPTS,
-        baseDelay: 100,
-        maxDelay: 2000,
-      }
-    );
+    // Call Server Action to perform database update
+    // Server Actions automatically handle server-only code
+    await update({
+      id: documentId,
+      version,
+      ...updates,
+    });
   }
 
   /**

@@ -10,6 +10,8 @@
  * @module lib/safe-update
  */
 
+import "server-only";
+
 import { db } from "@/db";
 import { documents, documentAuditLog } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
