@@ -30,41 +30,37 @@ export const archive = async (id: string) => {
     const docWithVersion = await getDocumentWithVersion(id, user.id)
     if (!docWithVersion) throw new Error("Not found")
 
-    // Use transaction for atomic recursive archive
-    const archived = await db.transaction(async (tx) => {
-        const recursiveArchive = async (documentId: string) => {
-            const children = await tx.select().from(documents).where(
-                and(eq(documents.userId, user.id), eq(documents.parentDocumentId, documentId))
-            )
+    // Recursive archive (no transaction support in neon-http)
+    const recursiveArchive = async (documentId: string) => {
+        const children = await db.select().from(documents).where(
+            and(eq(documents.userId, user.id), eq(documents.parentDocumentId, documentId))
+        )
 
-            for (const child of children) {
-                await tx.update(documents).set({
-                    isArchived: true,
-                    version: child.version + 1,
-                    lastModifiedBy: user.id,
-                    updatedAt: new Date()
-                }).where(eq(documents.id, child.id))
+        for (const child of children) {
+            await db.update(documents).set({
+                isArchived: true,
+                version: child.version + 1,
+                lastModifiedBy: user.id,
+                updatedAt: new Date()
+            }).where(eq(documents.id, child.id))
 
-                // Invalidate child from cache
-                await documentCache.invalidate(child.id)
+            // Invalidate child from cache
+            await documentCache.invalidate(child.id)
 
-                await recursiveArchive(child.id)
-            }
+            await recursiveArchive(child.id)
         }
+    }
 
-        // Archive parent document
-        const [archivedDoc] = await tx.update(documents).set({
-            isArchived: true,
-            version: docWithVersion.version + 1,
-            lastModifiedBy: user.id,
-            updatedAt: new Date()
-        }).where(eq(documents.id, id)).returning()
+    // Archive parent document
+    const [archived] = await db.update(documents).set({
+        isArchived: true,
+        version: docWithVersion.version + 1,
+        lastModifiedBy: user.id,
+        updatedAt: new Date()
+    }).where(eq(documents.id, id)).returning()
 
-        // Archive all children
-        await recursiveArchive(id)
-
-        return archivedDoc
-    })
+    // Archive all children
+    await recursiveArchive(id)
 
     // Invalidate from cache
     await documentCache.invalidate(id)
@@ -133,53 +129,49 @@ export const restore = async (id: string) => {
     })
     if (!existingDocument) throw new Error("Not found")
 
-    // Use transaction for atomic recursive restore
-    const restored = await db.transaction(async (tx) => {
-        const recursiveRestore = async (documentId: string) => {
-            const children = await tx.select().from(documents).where(
-                and(eq(documents.userId, user.id), eq(documents.parentDocumentId, documentId))
-            )
+    // Recursive restore (no transaction support in neon-http)
+    const recursiveRestore = async (documentId: string) => {
+        const children = await db.select().from(documents).where(
+            and(eq(documents.userId, user.id), eq(documents.parentDocumentId, documentId))
+        )
 
-            for (const child of children) {
-                await tx.update(documents).set({
-                    isArchived: false,
-                    version: child.version + 1,
-                    lastModifiedBy: user.id,
-                    updatedAt: new Date()
-                }).where(eq(documents.id, child.id))
+        for (const child of children) {
+            await db.update(documents).set({
+                isArchived: false,
+                version: child.version + 1,
+                lastModifiedBy: user.id,
+                updatedAt: new Date()
+            }).where(eq(documents.id, child.id))
 
-                // Invalidate child from cache
-                await documentCache.invalidate(child.id)
+            // Invalidate child from cache
+            await documentCache.invalidate(child.id)
 
-                await recursiveRestore(child.id)
-            }
+            await recursiveRestore(child.id)
         }
+    }
 
-        // Check if parent is archived, if so, orphan this document
-        let parentId = existingDocument.parentDocumentId
-        if (parentId) {
-            const parent = await tx.query.documents.findFirst({
-                where: eq(documents.id, parentId)
-            })
-            if (parent?.isArchived) {
-                parentId = null
-            }
+    // Check if parent is archived, if so, orphan this document
+    let parentId = existingDocument.parentDocumentId
+    if (parentId) {
+        const parent = await db.query.documents.findFirst({
+            where: eq(documents.id, parentId)
+        })
+        if (parent?.isArchived) {
+            parentId = null
         }
+    }
 
-        // Restore parent document
-        const [restoredDoc] = await tx.update(documents).set({
-            isArchived: false,
-            parentDocumentId: parentId,
-            version: existingDocument.version + 1,
-            lastModifiedBy: user.id,
-            updatedAt: new Date()
-        }).where(eq(documents.id, id)).returning()
+    // Restore parent document
+    const [restored] = await db.update(documents).set({
+        isArchived: false,
+        parentDocumentId: parentId,
+        version: existingDocument.version + 1,
+        lastModifiedBy: user.id,
+        updatedAt: new Date()
+    }).where(eq(documents.id, id)).returning()
 
-        // Restore all children
-        await recursiveRestore(id)
-
-        return restoredDoc
-    })
+    // Restore all children
+    await recursiveRestore(id)
 
     // Invalidate from cache
     await documentCache.invalidate(id)

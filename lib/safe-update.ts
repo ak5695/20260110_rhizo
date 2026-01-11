@@ -133,76 +133,90 @@ export async function safeUpdateDocument(params: {
   // Get client info for audit trail (from options, not headers)
   const clientInfo = getClientInfo(options);
 
-  return await db.transaction(async (tx) => {
-    // Step 1: Lock and read current document
-    // Note: Drizzle doesn't support FOR UPDATE in query builder yet,
-    // but transactions provide sufficient isolation for our use case
-    const current = await tx.query.documents.findFirst({
-      where: and(
-        eq(documents.id, documentId),
-        eq(documents.userId, userId)
-      )
-    });
+  // Note: Neon HTTP driver doesn't support transactions
+  // We use optimistic locking via version field to prevent conflicts
 
-    if (!current) {
-      throw new Error("Document not found or access denied");
-    }
-
-    // Step 2: Optimistic lock check
-    if (!skipVersionCheck && current.version !== expectedVersion) {
-      throw new OptimisticLockError(
-        documentId,
-        expectedVersion,
-        current.version
-      );
-    }
-
-    // Step 3: Prepare update with incremented version
-    const newVersion = current.version + 1;
-    const updateData = {
-      ...updates,
-      version: newVersion,
-      lastModifiedBy: userId,
-      updatedAt: new Date(),
-    };
-
-    // Step 4: Execute update
-    const [updated] = await tx
-      .update(documents)
-      .set(updateData)
-      .where(eq(documents.id, documentId))
-      .returning();
-
-    // Step 5: Write audit log for each changed field
-    const auditPromises = Object.entries(updates).map(([field, newValue]) => {
-      const oldValue = current[field as keyof typeof current];
-
-      // Only log if value actually changed
-      if (oldValue !== newValue) {
-        return writeAuditLog({
-          documentId,
-          userId,
-          action: "update",
-          fieldChanged: field,
-          oldValue: oldValue ? String(oldValue) : undefined,
-          newValue: newValue ? String(newValue) : undefined,
-          version: newVersion,
-          ipAddress: options.ipAddress || clientInfo.ipAddress,
-          userAgent: options.userAgent || clientInfo.userAgent,
-        });
-      }
-      return Promise.resolve();
-    });
-
-    // Wait for audit logs (but don't block on errors)
-    await Promise.allSettled(auditPromises);
-
-    return {
-      data: updated,
-      version: newVersion,
-      conflictDetected: false,
-    };
+  // Step 1: Read current document
+  const current = await db.query.documents.findFirst({
+    where: and(
+      eq(documents.id, documentId),
+      eq(documents.userId, userId)
+    )
   });
+
+  if (!current) {
+    throw new Error("Document not found or access denied");
+  }
+
+  // Step 2: Optimistic lock check
+  if (!skipVersionCheck && current.version !== expectedVersion) {
+    throw new OptimisticLockError(
+      documentId,
+      expectedVersion,
+      current.version
+    );
+  }
+
+  // Step 3: Prepare update with incremented version
+  const newVersion = current.version + 1;
+  const updateData = {
+    ...updates,
+    version: newVersion,
+    lastModifiedBy: userId,
+    updatedAt: new Date(),
+  };
+
+  // Step 4: Execute update with version check to ensure atomicity
+  // This prevents concurrent updates even without transactions
+  const [updated] = await db
+    .update(documents)
+    .set(updateData)
+    .where(
+      and(
+        eq(documents.id, documentId),
+        eq(documents.version, current.version) // Atomic version check
+      )
+    )
+    .returning();
+
+  // If no rows were updated, another process modified the document
+  if (!updated) {
+    throw new OptimisticLockError(
+      documentId,
+      expectedVersion,
+      current.version
+    );
+  }
+
+  // Step 5: Write audit log for each changed field (async, non-blocking)
+  const auditPromises = Object.entries(updates).map(([field, newValue]) => {
+    const oldValue = current[field as keyof typeof current];
+
+    // Only log if value actually changed
+    if (oldValue !== newValue) {
+      return writeAuditLog({
+        documentId,
+        userId,
+        action: "update",
+        fieldChanged: field,
+        oldValue: oldValue ? String(oldValue) : undefined,
+        newValue: newValue ? String(newValue) : undefined,
+        version: newVersion,
+        ipAddress: options.ipAddress || clientInfo.ipAddress,
+        userAgent: options.userAgent || clientInfo.userAgent,
+      });
+    }
+    return Promise.resolve();
+  });
+
+  // Wait for audit logs (but don't block on errors)
+  await Promise.allSettled(auditPromises);
+
+  return {
+    data: updated,
+    version: newVersion,
+    conflictDetected: false,
+  };
 }
 
 /**
@@ -288,32 +302,31 @@ export async function safeCreateDocument(params: {
 }): Promise<typeof documents.$inferSelect> {
   const { title, userId, parentDocumentId, ipAddress, userAgent } = params;
 
-  const [document] = await db.transaction(async (tx) => {
-    // Create document
-    const [doc] = await tx
-      .insert(documents)
-      .values({
-        title,
-        userId,
-        lastModifiedBy: userId,
-        parentDocumentId,
-        version: 1,
-        isArchived: false,
-        isPublished: false,
-      })
-      .returning();
-
-    // Audit log
-    await writeAuditLog({
-      documentId: doc.id,
+  // Create document (no transaction support in neon-http)
+  const [document] = await db
+    .insert(documents)
+    .values({
+      title,
       userId,
-      action: "create",
+      lastModifiedBy: userId,
+      parentDocumentId,
       version: 1,
-      ipAddress,
-      userAgent,
-    });
+      isArchived: false,
+      isPublished: false,
+    })
+    .returning();
 
-    return [doc];
+  // Audit log (async, non-blocking)
+  // If this fails, it won't affect document creation
+  writeAuditLog({
+    documentId: document.id,
+    userId,
+    action: "create",
+    version: 1,
+    ipAddress,
+    userAgent,
+  }).catch((error) => {
+    console.error("[safeCreateDocument] Failed to write audit log:", error);
   });
 
   return document;
