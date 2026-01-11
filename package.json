@@ -34,7 +34,7 @@
     "react-dom": "^19.0.0",
     "react": "^19.0.0",
     "react-dropzone": "^14.3.5",
-    "react-textarea-autosize": "^8.5.7",
+    "react-textarea-autosize": "^8.5.9",
     "sonner": "^1.7.4",
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
