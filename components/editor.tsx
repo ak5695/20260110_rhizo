@@ -29,6 +29,7 @@ import {
 } from "@/actions/anchors";
 import { create as serverCreateDocument } from "@/actions/documents";
 import { useSemanticSync } from "@/store/use-semantic-sync";
+import { AiChatModal } from "./ai-chat-modal";
 
 // Dynamic import for Excalidraw
 const Excalidraw = dynamic(
@@ -318,6 +319,8 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId }: Edit
   const [activeSelection, setActiveSelection] = useState("");
   const [existingAnchor, setExistingAnchor] = useState<any>(null);
   const { activeNodeId, setActiveNode } = useSemanticSync();
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiModalPosition, setAiModalPosition] = useState({ top: 0, left: 0 });
 
   const handleUpload = async (file: File) => {
     const { getUploadUrl } = await import("@/actions/storage");
@@ -338,6 +341,40 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId }: Edit
     initialContent: initialContent ? JSON.parse(initialContent) : undefined,
     uploadFile: handleUpload,
   });
+
+  // Handle space key on empty line to open AI modal
+  useEffect(() => {
+    if (!editor) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === " " && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        const currentBlock = editor.getTextCursorPosition().block;
+        const blockText = currentBlock.content?.map((c: any) => c.text || "").join("") || "";
+
+        // Check if current line is empty
+        if (blockText.trim() === "") {
+          event.preventDefault();
+          setShowAiModal(true);
+          // Get cursor position for modal placement
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            setAiModalPosition({
+              top: rect.top + window.scrollY,
+              left: rect.left + window.scrollX,
+            });
+          }
+        }
+      }
+    };
+
+    const editorElement = document.querySelector(".bn-container");
+    if (editorElement) {
+      editorElement.addEventListener("keydown", handleKeyDown as any);
+      return () => editorElement.removeEventListener("keydown", handleKeyDown as any);
+    }
+  }, [editor]);
 
   // 注入上下文到 editor 实例，以便自定义 Block 访问
   useEffect(() => {
@@ -536,6 +573,25 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId }: Edit
           existingAnchor={existingAnchor}
         />
       )}
+      <AiChatModal
+        isOpen={showAiModal}
+        onClose={() => setShowAiModal(false)}
+        position={aiModalPosition}
+        onInsertText={(text) => {
+          if (editor) {
+            editor.insertBlocks(
+              [
+                {
+                  type: "paragraph",
+                  content: text,
+                },
+              ],
+              editor.getTextCursorPosition().block,
+              "after"
+            );
+          }
+        }}
+      />
     </div>
   );
 };
