@@ -8,7 +8,7 @@ import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { writeQueue } from "@/lib/write-queue";
-import { OptimisticLockError } from "@/lib/safe-update";
+import { OptimisticLockError } from "@/lib/errors";
 
 export default function DocumentIdPage() {
   const { documentId } = useParams();

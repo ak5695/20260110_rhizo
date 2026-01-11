@@ -11,7 +11,14 @@
  * @module lib/write-queue
  */
 
-import { safeUpdateDocument, withRetry, OptimisticLockError } from "./safe-update";
+import { OptimisticLockError } from "./errors";
+
+// Import server-side functions only when needed (not at module level)
+// This prevents database connections in client-side code
+const getSafeUpdateFunctions = async () => {
+  const { safeUpdateDocument, withRetry } = await import("./safe-update");
+  return { safeUpdateDocument, withRetry };
+};
 
 /**
  * Pending write operation
@@ -252,6 +259,9 @@ class WriteQueueManager {
    */
   private async executeWrite(pending: PendingWrite): Promise<void> {
     const { documentId, updates, version, userId } = pending;
+
+    // Dynamically import server-side functions to avoid database connections in client code
+    const { safeUpdateDocument, withRetry } = await getSafeUpdateFunctions();
 
     await withRetry(
       () =>

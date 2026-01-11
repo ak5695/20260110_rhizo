@@ -13,24 +13,10 @@
 import { db } from "@/db";
 import { documents, documentAuditLog } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { OptimisticLockError } from "./errors";
 
-/**
- * Conflict error thrown when optimistic lock fails
- */
-export class OptimisticLockError extends Error {
-  constructor(
-    public documentId: string,
-    public expectedVersion: number,
-    public actualVersion: number
-  ) {
-    super(
-      `Document ${documentId} has been modified by another user. ` +
-      `Expected version ${expectedVersion}, but found ${actualVersion}. ` +
-      `Please refresh and try again.`
-    );
-    this.name = "OptimisticLockError";
-  }
-}
+// Re-export for convenience
+export { OptimisticLockError };
 
 /**
  * Update result with version information
