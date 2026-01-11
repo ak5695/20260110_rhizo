@@ -1,14 +1,13 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { getById } from "@/actions/documents";
 import { MenuIcon } from "lucide-react";
 import { Title } from "@/components/main/title";
 import { Banner } from "@/components/main/banner";
 import { Menu } from "@/components/main/menu";
 import { Publish } from "@/components/main/publish";
+import useSWR from "swr";
 
 interface NavbarProps {
   isCollapsed: boolean;
@@ -18,9 +17,10 @@ interface NavbarProps {
 export const Navbar = ({ isCollapsed, onResetWidth }: NavbarProps) => {
   const params = useParams();
 
-  const document = useQuery(api.documents.getById, {
-    documentId: params.documentId as Id<"documents">,
-  });
+  const { data: document } = useSWR(
+    params.documentId ? ["document", params.documentId] : null,
+    ([, id]) => getById(id as string)
+  );
 
   if (document === undefined) {
     return (
@@ -49,11 +49,11 @@ export const Navbar = ({ isCollapsed, onResetWidth }: NavbarProps) => {
           <Title initialData={document} />
           <div className="flex items-center gap-x-2">
             <Publish initialData={document} />
-            <Menu documentId={document._id} />
+            <Menu documentId={document.id} />
           </div>
         </div>
       </nav>
-      {document.isArchived && <Banner documentId={document._id} />}
+      {document.isArchived && <Banner documentId={document.id} />}
     </>
   );
 };

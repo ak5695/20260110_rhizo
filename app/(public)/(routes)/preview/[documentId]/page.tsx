@@ -1,10 +1,9 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
 import dynamic from "next/dynamic";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 
-import { api } from "@/convex/_generated/api";
+import { getById } from "@/actions/documents";
 import { Toolbar } from "@/components/toolbar";
 import { Cover } from "@/components/cover";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,14 +16,20 @@ export default function DocumentIdPage() {
     [],
   );
 
-  // @ts-ignore
-  const document = useQuery(api.documents.getById, { documentId: documentId });
-  const update = useMutation(api.documents.update);
+  const [document, setDocument] = useState<any>(undefined);
 
-  const onChange = (content: string) => {
-    // @ts-ignore
-    update({ id: documentId, content });
-  };
+  useEffect(() => {
+    if (typeof documentId === "string") {
+      getById(documentId)
+        .then((doc) => {
+          // Adapt document structure if necessary (Date objects to JSON if passing to client components or ensure components handle Date)
+          // Drizzle returns Date objects for timestamps. Convex returned numbers or strings usually?
+          // Document interface in components usually expects string or number. I might need to serialize dates.
+          setDocument(doc);
+        })
+        .catch(() => setDocument(null));
+    }
+  }, [documentId]);
 
   if (document === undefined) {
     return (
@@ -51,7 +56,7 @@ export default function DocumentIdPage() {
         <Toolbar preview initialData={document} />
         <Editor
           editable={false}
-          onChange={onChange}
+          onChange={() => { }}
           initialContent={document.content}
         />
       </div>

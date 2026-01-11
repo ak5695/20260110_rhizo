@@ -8,12 +8,10 @@ import {
   Plus,
   Trash,
 } from "lucide-react";
-import { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { create, archive } from "@/actions/documents";
 import React from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -23,10 +21,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useUser } from "@clerk/nextjs";
+import { authClient } from "@/lib/auth-client";
 
 interface ItemProps {
-  id?: Id<"documents">;
+  id?: string;
   documentIcon?: string;
   active?: boolean;
   expanded?: boolean;
@@ -50,15 +48,13 @@ export const Item = ({
   onExpand,
   expanded,
 }: ItemProps) => {
-  const { user } = useUser();
+  const { data: session } = authClient.useSession();
   const router = useRouter();
-  const create = useMutation(api.documents.create);
-  const archive = useMutation(api.documents.archive);
 
   const onArchive = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     event.stopPropagation();
     if (!id) return;
-    const promise = archive({ id }).then(() => router.push("/documents"));
+    const promise = archive(id).then(() => router.push("/documents"));
 
     toast.promise(promise, {
       loading: "Moving to trash...",
@@ -76,12 +72,12 @@ export const Item = ({
   const onCreate = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     event.stopPropagation();
     if (!id) return;
-    const promise = create({ title: "Untitled", parentDocument: id }).then(
-      (documentId) => {
+    const promise = create({ title: "Untitled", parentDocumentId: id }).then(
+      (document) => {
         if (!expanded) {
           onExpand?.();
         }
-        router.push(`/documents/${documentId}`);
+        router.push(`/documents/${document.id}`);
       },
     );
 
@@ -148,7 +144,7 @@ export const Item = ({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <div className="text-xs text-muted-foreground p-2">
-                Last edited by: {user?.fullName}
+                Last edited by: {session?.user?.name}
               </div>
             </DropdownMenuContent>
           </DropdownMenu>

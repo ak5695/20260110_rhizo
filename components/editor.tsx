@@ -1,7 +1,6 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEdgeStore } from "@/lib/edgestore";
 import { BlockNoteEditor } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
@@ -16,11 +15,19 @@ interface EditorProps {
 
 const Editor = ({ onChange, initialContent, editable }: EditorProps) => {
   const { resolvedTheme } = useTheme();
-  const { edgestore } = useEdgeStore();
 
   const handleUpload = async (file: File) => {
-    const response = await edgestore.publicFiles.upload({ file });
-    return response.url;
+    const { getUploadUrl } = await import("@/actions/storage");
+    const key = `${Date.now()}-${file.name}`;
+    const { url, publicUrl } = await getUploadUrl(key, file.type);
+
+    await fetch(url, {
+      method: "PUT",
+      body: file,
+      headers: { "Content-Type": file.type },
+    });
+
+    return publicUrl;
   };
 
   const editor: BlockNoteEditor = useCreateBlockNote({
@@ -34,7 +41,7 @@ const Editor = ({ onChange, initialContent, editable }: EditorProps) => {
         editable={editable}
         editor={editor}
         onChange={() => {
-          JSON.stringify(editor.document, null, 2);
+          onChange(JSON.stringify(editor.document));
         }}
         theme={resolvedTheme === "dark" ? "dark" : "light"}
       />

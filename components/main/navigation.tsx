@@ -20,8 +20,7 @@ import { useMediaQuery } from "usehooks-ts";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { UserItem } from "@/components/main/user-item";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { create } from "@/actions/documents";
 import { Item } from "@/components/main/item";
 import { toast } from "sonner";
 import { DocumentList } from "@/components/main/document-list";
@@ -42,7 +41,6 @@ export const Navigation = () => {
   const params = useParams();
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 768px)");
-  const create = useMutation(api.documents.create);
 
   const isResizingRef = useRef(false);
   const sidebarRef = useRef<ElementRef<"aside">>(null);
@@ -111,8 +109,8 @@ export const Navigation = () => {
   };
 
   const handleCreate = () => {
-    const promise = create({ title: "Untitled" }).then((documentId) =>
-      router.push(`/documents/${documentId}`),
+    const promise = create({ title: "Untitled" }).then((document) =>
+      router.push(`/documents/${document.id}`),
     );
 
     toast.promise(promise, {

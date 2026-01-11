@@ -1,6 +1,7 @@
 "use client";
 
-import { SignOutButton, useUser } from "@clerk/nextjs";
+import { authClient } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +13,13 @@ import { Avatar, AvatarImage } from "@/components/ui/avatar";
 import { ChevronsLeftRight } from "lucide-react";
 
 export const UserItem = () => {
-  const { user } = useUser();
+  const { data: session } = authClient.useSession();
+  const router = useRouter();
+
+  const onSignOut = async () => {
+    await authClient.signOut();
+    router.push("/");
+  }
 
   return (
     <DropdownMenu>
@@ -23,10 +30,10 @@ export const UserItem = () => {
         >
           <div className="gap-x-2 flex items-center max-w-[150px]">
             <Avatar className="h-5 w-5">
-              <AvatarImage src={user?.imageUrl} />
+              <AvatarImage src={session?.user?.image || ""} />
             </Avatar>
             <span className="text-start font-medium line-clamp-1">
-              {user?.firstName}&apos;s Jotion
+              {session?.user?.name}&apos;s Jotion
             </span>
           </div>
           <ChevronsLeftRight className="rotate-90 ml-2 text-muted-foreground h-4 w-4" />
@@ -40,17 +47,17 @@ export const UserItem = () => {
       >
         <div className="flex flex-col space-y-4 p-2">
           <p className="text-xs font-medium leading-none text-muted-foreground">
-            {user?.emailAddresses[0].emailAddress}
+            {session?.user?.email}
           </p>
           <div className="flex items-center gap-x-2">
             <div className="rounded-md bg-secondary p-1">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={user?.imageUrl} />
+                <AvatarImage src={session?.user?.image || ""} />
               </Avatar>
             </div>
             <div className="space-y-1">
               <p className="text-sm line-clamp-1">
-                {user?.fullName}&apos;s Jotion
+                {session?.user?.name}&apos;s Jotion
               </p>
             </div>
           </div>
@@ -58,9 +65,9 @@ export const UserItem = () => {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="w-full cursor-pointer text-muted-foreground"
-          asChild
+          onClick={onSignOut}
         >
-          <SignOutButton>Logout</SignOutButton>
+          Logout
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

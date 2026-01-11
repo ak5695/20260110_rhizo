@@ -1,6 +1,6 @@
 "use client";
 
-import { useConvexAuth } from "convex/react";
+import { authClient } from "@/lib/auth-client";
 import { Spinner } from "@/components/spinner";
 import { redirect } from "next/navigation";
 import { Navigation } from "@/components/main/navigation";
@@ -12,7 +12,7 @@ export default function MainLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { data: session, isPending: isLoading } = authClient.useSession();
 
   if (isLoading) {
     return (
@@ -22,7 +22,7 @@ export default function MainLayout({
     );
   }
 
-  if (!isAuthenticated) {
+  if (!session) {
     return redirect("/");
   }
 

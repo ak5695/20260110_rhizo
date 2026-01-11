@@ -1,8 +1,6 @@
 "use client";
 
-import { Doc } from "@/convex/_generated/dataModel";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { update } from "@/actions/documents";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -15,22 +13,21 @@ import { Check, Copy, Globe } from "lucide-react";
 import { useOrigin } from "@/hooks/use-origin";
 
 interface PublishProps {
-  initialData: Doc<"documents">;
+  initialData: any;
 }
 
 export const Publish = ({ initialData }: PublishProps) => {
   const origin = useOrigin();
-  const update = useMutation(api.documents.update);
 
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const url = `${origin}/preview/${initialData._id}`;
+  const url = `${origin}/preview/${initialData.id}`;
 
   const onPublish = () => {
     setIsSubmitting(true);
 
-    const promise = update({ id: initialData._id, isPublished: true }).finally(
+    const promise = update({ id: initialData.id, isPublished: true }).finally(
       () => setIsSubmitting(false),
     );
 
@@ -44,7 +41,7 @@ export const Publish = ({ initialData }: PublishProps) => {
   const onUnpublish = () => {
     setIsSubmitting(true);
 
-    const promise = update({ id: initialData._id, isPublished: false }).finally(
+    const promise = update({ id: initialData.id, isPublished: false }).finally(
       () => setIsSubmitting(false),
     );
 

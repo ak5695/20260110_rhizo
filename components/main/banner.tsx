@@ -1,25 +1,20 @@
 "use client";
 
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
-import { useMutation } from "convex/react";
+import { remove, restore } from "@/actions/documents";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
 
 interface BannerProps {
-  documentId: Id<"documents">;
+  documentId: string;
 }
 
 export const Banner = ({ documentId }: BannerProps) => {
   const router = useRouter();
 
-  const remove = useMutation(api.documents.remove);
-  const restore = useMutation(api.documents.restore);
-
   const onRemove = () => {
-    const promise = remove({ id: documentId });
+    const promise = remove(documentId);
     toast.promise(promise, {
       loading: "Deleting note...",
       success: "Note deleted!",
@@ -29,7 +24,7 @@ export const Banner = ({ documentId }: BannerProps) => {
   };
 
   const onRestore = () => {
-    const promise = restore({ id: documentId });
+    const promise = restore(documentId);
     toast.promise(promise, {
       loading: "Restoring note...",
       success: "Note restored!",
