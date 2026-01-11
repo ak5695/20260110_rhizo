@@ -1,17 +1,16 @@
 "use client";
 
-import { Doc } from "@/convex/_generated/dataModel";
-import React, { ElementRef, useRef, useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import React, { ElementRef, useRef, useState, useCallback } from "react";
+import { update, removeIcon } from "@/actions/documents";
 import { IconPicker } from "@/components/icon-picker";
 import { Button } from "@/components/ui/button";
 import { ImageIcon, Smile, X } from "lucide-react";
 import TextareaAutosize from "react-textarea-autosize";
 import { useCoverImage } from "@/hooks/use-cover-image";
+import { writeQueue } from "@/lib/write-queue";
 
 interface ToolbarProps {
-  initialData: Doc<"documents">;
+  initialData: any; // Type adaptation
   preview?: boolean;
 }
 
@@ -19,9 +18,6 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
   const inputRef = useRef<ElementRef<"textarea">>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(initialData.title);
-
-  const update = useMutation(api.documents.update);
-  const removeIcon = useMutation(api.documents.removeIcon);
 
   const coverImage = useCoverImage();
 
@@ -37,13 +33,21 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
 
   const disableInput = () => setIsEditing(false);
 
-  const onInput = (value: string) => {
+  // Enterprise-grade onInput with write queue
+  const onInput = useCallback((value: string) => {
     setValue(value);
-    update({
-      id: initialData._id,
-      title: value || "Untitled",
+
+    // Queue title update with debouncing (500ms)
+    writeQueue.queueUpdate({
+      documentId: initialData.id,
+      fieldName: "title",
+      updates: { title: value || "Untitled" },
+      version: initialData.version,
+      userId: initialData.userId,
+    }).catch((error) => {
+      console.error("[Toolbar] Failed to update title:", error);
     });
-  };
+  }, [initialData.id, initialData.version, initialData.userId]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter") {
@@ -52,13 +56,30 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
     }
   };
 
-  const onIconSelect = (icon: string) => {
-    update({ id: initialData._id, icon });
-  };
+  // Icon changes are immediate (no debounce)
+  const onIconSelect = useCallback((icon: string) => {
+    writeQueue.queueUpdate({
+      documentId: initialData.id,
+      fieldName: "icon",
+      updates: { icon },
+      version: initialData.version,
+      userId: initialData.userId,
+    }).catch((error) => {
+      console.error("[Toolbar] Failed to update icon:", error);
+    });
+  }, [initialData.id, initialData.version, initialData.userId]);
 
-  const onRemoveIcon = () => {
-    removeIcon({ id: initialData._id });
-  };
+  const onRemoveIcon = useCallback(() => {
+    writeQueue.queueUpdate({
+      documentId: initialData.id,
+      fieldName: "icon",
+      updates: { icon: null as any },
+      version: initialData.version,
+      userId: initialData.userId,
+    }).catch((error) => {
+      console.error("[Toolbar] Failed to remove icon:", error);
+    });
+  }, [initialData.id, initialData.version, initialData.userId]);
 
   return (
     <div className="pl-[54px] group relative">

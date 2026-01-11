@@ -1,20 +1,18 @@
 "use client";
 
-import { Doc } from "@/convex/_generated/dataModel";
-import React, { useRef, useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import React, { useRef, useState, useCallback } from "react";
+import { update } from "@/actions/documents";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { writeQueue } from "@/lib/write-queue";
 
 interface TitleProps {
-  initialData: Doc<"documents">;
+  initialData: any;
 }
 
 export const Title = ({ initialData }: TitleProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
-  const update = useMutation(api.documents.update);
 
   const [title, setTitle] = useState(initialData.title || "Untitled");
   const [isEditing, setIsEditing] = useState(false);
@@ -32,10 +30,23 @@ export const Title = ({ initialData }: TitleProps) => {
     setIsEditing(false);
   };
 
-  const onChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setTitle(event.target.value);
-    update({ id: initialData._id, title: event.target.value || "Untitled" });
-  };
+  // Enterprise-grade onChange with write queue and debouncing
+  const onChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const newTitle = event.target.value || "Untitled";
+    setTitle(newTitle);
+
+    // Queue update with debouncing (500ms for title)
+    writeQueue.queueUpdate({
+      documentId: initialData.id,
+      fieldName: "title",
+      updates: { title: newTitle },
+      version: initialData.version,
+      userId: initialData.userId,
+    }).catch((error) => {
+      console.error("[Title] Failed to update title:", error);
+      // Write queue will handle retries automatically
+    });
+  }, [initialData.id, initialData.version, initialData.userId]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") disableInput();

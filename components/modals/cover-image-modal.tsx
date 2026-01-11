@@ -1,20 +1,18 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { update } from "@/actions/documents";
+import { getUploadUrl } from "@/actions/storage";
 import { useCoverImage } from "@/hooks/use-cover-image";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
-import { Id } from "@/convex/_generated/dataModel";
-import { useEdgeStore } from "@/lib/edgestore";
 import { SingleImageDropzone } from "@/components/single-image-dropzone";
+import { writeQueue } from "@/lib/write-queue";
 
 export const CoverImageModal = () => {
   const params = useParams();
-  const update = useMutation(api.documents.update);
   const coverImage = useCoverImage();
-  const { edgestore } = useEdgeStore();
+  // removed edgestore
 
   const [file, setFile] = useState<File>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,17 +28,35 @@ export const CoverImageModal = () => {
       setIsSubmitting(true);
       setFile(file);
 
-      const res = await edgestore.publicFiles.upload({
-        file,
-        options: { replaceTargetUrl: coverImage.url },
-      });
+      try {
+        // Step 1: Get upload URL from server
+        const key = `${Date.now()}-${file.name}`;
+        const { url, publicUrl } = await getUploadUrl(key, file.type);
 
-      await update({
-        id: params.documentId as Id<"documents">,
-        coverImage: res.url,
-      });
+        // Step 2: Upload file to R2
+        const uploadResponse = await fetch(url, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type },
+        });
 
-      onClose();
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed: ${uploadResponse.statusText}`);
+        }
+
+        // Step 3: Update document with cover image URL
+        // This is immediate (no debounce) as it's a user-initiated action
+        await update({
+          id: params.documentId as string,
+          coverImage: publicUrl,
+        });
+
+        onClose();
+      } catch (error) {
+        console.error("[CoverImageModal] Failed to upload cover image:", error);
+        alert("Failed to upload cover image. Please try again.");
+        setIsSubmitting(false);
+      }
     }
   };
 
