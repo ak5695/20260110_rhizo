@@ -39,6 +39,7 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-dropzone": "^14.3.5",
+    "react-force-graph-2d": "^1.29.0",
     "react-textarea-autosize": "^8.5.7",
     "server-only": "^0.0.1",
     "sonner": "^1.7.4",

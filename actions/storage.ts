@@ -27,9 +27,10 @@ export const getUploadUrl = async (key: string, type: string) => {
     });
 
     const url = await getSignedUrl(R2, putCommand, { expiresIn: 3600 });
-    // Assuming custom domain or public R2 dev URL
-    const publicUrl = process.env.NEXT_PUBLIC_R2_DOMAIN
-        ? `${process.env.NEXT_PUBLIC_R2_DOMAIN}/${key}`
+    // Sanitize domain and ensure no trailing slash
+    const domain = process.env.NEXT_PUBLIC_R2_DOMAIN?.replace(/\/$/, "");
+    const publicUrl = domain
+        ? `${domain}/${key}`
         : `https://${process.env.R2_BUCKET_NAME}.r2.dev/${key}`; // Fallback
 
     return { url, publicUrl };

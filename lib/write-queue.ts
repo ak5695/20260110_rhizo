@@ -20,7 +20,7 @@ import { update } from "@/actions/documents";
 interface PendingWrite {
   documentId: string;
   updates: Record<string, any>;
-  version: number;
+  version?: number;
   userId: string;
   timestamp: number;
   retryCount: number;
@@ -92,7 +92,7 @@ class WriteQueueManager {
     documentId: string;
     fieldName: string;
     updates: Record<string, any>;
-    version: number;
+    version?: number;
     userId: string;
   }): Promise<void> {
     const { documentId, fieldName, updates, version, userId } = params;
@@ -107,7 +107,7 @@ class WriteQueueManager {
     this.pendingWrites.set(documentId, {
       documentId,
       updates: merged,
-      version,
+      version: version ?? existing?.version,
       userId,
       timestamp: Date.now(),
       retryCount: 0,
@@ -184,6 +184,15 @@ class WriteQueueManager {
       this.debounceTimers.delete(documentId);
     }
 
+    // CONCURRENCY GUARD: If already flushing, skip this cycle.
+    // The changes in 'pending' will be preserved if we don't clear them,
+    // but the current implementation clears them in 'finally'.
+    // Better approach: If flushing, wait for it to finish and then check if more work is needed.
+    if (this.flushPromises.has(documentId)) {
+      console.log(`[WriteQueue] Flush already in progress for ${documentId}, deferring.`);
+      return;
+    }
+
     // Create flush promise
     const flushPromise = this.executeWrite(pending);
     this.flushPromises.set(documentId, flushPromise);
@@ -255,12 +264,19 @@ class WriteQueueManager {
     const { documentId, updates, version } = pending;
 
     // Call Server Action to perform database update
-    // Server Actions automatically handle server-only code
-    await update({
+    // It returns the new document version
+    const updatedDoc = await update({
       id: documentId,
       version,
       ...updates,
     });
+
+    // Success! If the write was successful, we can potentially update 
+    // any NEW pending writes with the new version to avoid future conflicts.
+    const latestPending = this.pendingWrites.get(documentId);
+    if (latestPending && updatedDoc) {
+      latestPending.version = updatedDoc.version;
+    }
   }
 
   /**

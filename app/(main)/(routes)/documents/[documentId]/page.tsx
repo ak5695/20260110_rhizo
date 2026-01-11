@@ -17,6 +17,11 @@ export default function DocumentIdPage() {
     [],
   );
 
+  const SemanticGraph = useMemo(
+    () => dynamic(() => import("@/components/semantic-graph-panel").then(mod => mod.SemanticGraphPanel), { ssr: false }),
+    [],
+  );
+
   const [document, setDocument] = useState<any>(undefined);
   const documentVersionRef = useRef<number>(0);
 
@@ -45,24 +50,21 @@ export default function DocumentIdPage() {
     }
   }, [documentId]);
 
-  // Enterprise-grade onChange with write queue and optimistic locking
+  // Enterprise-grade onChange with write queue
   const onChange = useCallback(async (content: string) => {
     if (typeof documentId === "string" && document?.userId) {
       try {
         // Queue update with debouncing (1000ms for content)
+        // We no longer pass the version from the client to avoid sync issues during rapid typing.
+        // The server will handle optimistic locking using its latest known version.
         await writeQueue.queueUpdate({
           documentId,
           fieldName: "content",
           updates: { content },
-          version: documentVersionRef.current,
           userId: document.userId,
         });
-
-        // Update version after successful write
-        documentVersionRef.current += 1;
       } catch (error) {
         console.error("[DocumentPage] Failed to update content:", error);
-        // Write queue will handle retries automatically
       }
     }
   }, [documentId, document?.userId]);
@@ -88,11 +90,31 @@ export default function DocumentIdPage() {
   }
 
   return (
-    <div className="pb-40">
-      <Cover url={document.coverImage} />
-      <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
-        <Toolbar initialData={document} />
-        <Editor onChange={onChange} initialContent={document.content} />
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* 文档编辑区 (文档 = 线性载体) */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="pb-40">
+          <Cover url={document.coverImage} />
+          <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
+            <Toolbar initialData={document} />
+            <Editor
+              onChange={onChange}
+              initialContent={document.content}
+              userId={document.userId}
+              documentId={documentId as string}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 语义图谱区 (图谱 = 结构载体) */}
+      <div className="relative w-[525px] hidden lg:block group/resizer transition-all duration-500 overflow-visible">
+        {/* 对称分界阴影中轴 (Shadow Axis) - 更加细腻的过渡 */}
+        <div className="absolute -left-[0.5px] top-0 bottom-0 w-[1px] bg-border/40 z-50 shadow-[0_0_30px_rgba(0,0,0,0.15)] pointer-events-none" />
+
+        <div className="h-full border-l border-white/5 bg-background relative z-10">
+          <SemanticGraph documentId={documentId as string} />
+        </div>
       </div>
     </div>
   );

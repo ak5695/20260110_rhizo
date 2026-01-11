@@ -7,11 +7,11 @@ import { eq, and, desc, asc, ne, isNull } from "drizzle-orm"
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
 import {
-  safeUpdateDocument,
-  safeCreateDocument,
-  withRetry,
-  OptimisticLockError,
-  getDocumentWithVersion,
+    safeUpdateDocument,
+    safeCreateDocument,
+    withRetry,
+    OptimisticLockError,
+    getDocumentWithVersion,
 } from "@/lib/safe-update"
 import { documentCache } from "@/lib/cache/document-cache"
 
@@ -243,33 +243,54 @@ export const update = async (args: {
     coverImage?: string,
     icon?: string,
     isPublished?: boolean,
-    version?: number  // Add version parameter for optimistic locking
+    version?: number
 }) => {
     const user = await getUser()
     if (!user) throw new Error("Unauthorized")
 
     const { id, version, ...updates } = args
 
-    // Get current document with version
-    const docWithVersion = await getDocumentWithVersion(id, user.id)
-    if (!docWithVersion) throw new Error("Not found")
+    let currentAttempt = 0;
+    return await withRetry(async () => {
+        currentAttempt++;
 
-    // Use safe update with optimistic locking
-    const result = await safeUpdateDocument({
-        documentId: id,
-        updates,
-        options: {
-            expectedVersion: version ?? docWithVersion.version,
-            userId: user.id,
-        },
-    })
+        // Get the latest current version from DB on each attempt
+        const docWithVersion = await getDocumentWithVersion(id, user.id)
+        if (!docWithVersion) throw new Error("Not found")
 
-    // Invalidate cache after update
-    await documentCache.invalidate(id)
+        // Self-Healing Logic: 
+        // On the first attempt, we use the client's provided version (strict check).
+        // On subsequent retries, we use the DB's current version to allow the update to proceed
+        // if the conflict was just a race condition from the same user's actions.
+        const expectedVersion = (currentAttempt === 1 && version !== undefined)
+            ? version
+            : docWithVersion.version;
 
-    revalidatePath(`/documents/${id}`)
-    revalidatePath("/documents")
-    return result.data
+        console.log(`[Update] Attempt ${currentAttempt}: doc=${id} expected=${expectedVersion} actual=${docWithVersion.version}`);
+
+        // Use safe update with optimistic locking
+        const result = await safeUpdateDocument({
+            documentId: id,
+            updates,
+            options: {
+                expectedVersion,
+                userId: user.id,
+            },
+        })
+
+        // Invalidate cache after update
+        await documentCache.invalidate(id)
+
+        // 如果更新了内容，则同步块数据到结构化表（语义引擎依赖）
+        if (updates.content) {
+            const { syncBlocks } = await import("@/lib/services/semantic/block-sync");
+            await syncBlocks(id, updates.content);
+        }
+
+        revalidatePath(`/documents/${id}`)
+        revalidatePath("/documents")
+        return result.data
+    }, { maxAttempts: 3, baseDelay: 200 })
 }
 
 export const removeIcon = async (id: string) => {

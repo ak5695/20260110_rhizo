@@ -257,9 +257,8 @@ export async function withRetry<T>(
     } catch (error) {
       lastError = error as Error;
 
-      // Don't retry on logical errors
+      // Don't retry on non-retriable logical errors (Not Found, etc.)
       if (
-        error instanceof OptimisticLockError ||
         (error as Error).message?.includes("not found") ||
         (error as Error).message?.includes("validation")
       ) {

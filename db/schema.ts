@@ -1,5 +1,5 @@
 
-import { pgTable, text, integer, boolean, timestamp, uuid, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, uuid, index, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
     id: text("id").primaryKey(),
@@ -59,6 +59,7 @@ export const documents = pgTable("documents", {
     isPublished: boolean("isPublished").notNull().default(false),
     // Optimistic locking: incremented on every update
     version: integer("version").notNull().default(1),
+    migrationVersion: integer("migrationVersion").notNull().default(0),
     // Audit trail: track last modifier
     lastModifiedBy: text("lastModifiedBy").notNull().references(() => user.id),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -68,6 +69,72 @@ export const documents = pgTable("documents", {
         byUser: index("by_user_idx").on(table.userId),
         byUserParent: index("by_user_parent_idx").on(table.userId, table.parentDocumentId),
         byUpdated: index("by_updated_idx").on(table.updatedAt),
+    }
+});
+
+export const documentBlocks = pgTable("document_blocks", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    documentId: uuid("documentId")
+        .notNull()
+        .references(() => documents.id, { onDelete: 'cascade' }),
+    type: text("type").notNull(),
+    text: text("text").notNull().default(""),
+    props: jsonb("props").default({}),
+    order: integer("order").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => {
+    return {
+        byDocumentOrder: index("blocks_by_doc_order_idx").on(table.documentId, table.order),
+    }
+});
+
+export const semanticNodes = pgTable("semantic_nodes", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("userId").notNull().references(() => user.id, { onDelete: 'cascade' }),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    metadata: jsonb("metadata").default({}),
+    version: integer("version").default(1).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => {
+    return {
+        byType: index("idx_nodes_type").on(table.type),
+        searchTitle: index("idx_nodes_title").on(table.title),
+        uniqueNode: uniqueIndex("idx_unique_node").on(table.userId, table.title, table.type),
+    }
+});
+
+export const semanticEdges = pgTable("semantic_edges", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sourceNodeId: uuid("source_id").notNull().references(() => semanticNodes.id, { onDelete: 'cascade' }),
+    targetNodeId: uuid("target_id").notNull().references(() => semanticNodes.id, { onDelete: 'cascade' }),
+    relationType: text("relation_type").notNull(),
+    weight: integer("weight").default(1),
+    metadata: jsonb("metadata").default({}),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => {
+    return {
+        bySource: index("idx_edges_source").on(table.sourceNodeId),
+        byTarget: index("idx_edges_target").on(table.targetNodeId),
+    }
+});
+
+export const nodeSourceAnchors = pgTable("node_source_anchors", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    nodeId: uuid("nodeId").notNull().references(() => semanticNodes.id, { onDelete: 'cascade' }),
+    blockId: uuid("blockId").notNull().references(() => documentBlocks.id, { onDelete: 'cascade' }),
+    startOffset: integer("start_offset").notNull(),
+    endOffset: integer("end_offset").notNull(),
+    provenance: text("provenance").notNull().default('AI'), // 'AI', 'USER', 'HYBRID', 'USER_REJECTED'
+    isLocked: boolean("is_locked").notNull().default(false),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => {
+    return {
+        byBlock: index("idx_anchors_block").on(table.blockId),
+        byNode: index("idx_anchors_node").on(table.nodeId),
     }
 });
 
