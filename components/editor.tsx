@@ -736,41 +736,84 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     }
   }, [bindings, hasLiveInfo]);
 
-  // Listen for Live Canvas ghost updates
+  // 【企业级】监听Canvas元素删除事件，彻底移除绑定标记
   useEffect(() => {
-    const handleStatusUpdate = (e: CustomEvent) => {
-      const { deletedIds } = e.detail;
-      if (Array.isArray(deletedIds)) {
-        setDeletedElementIds(new Set(deletedIds));
-        setHasLiveInfo(true);
-      }
-    };
-    window.addEventListener("canvas:element-status-update", handleStatusUpdate as EventListener);
-    return () => window.removeEventListener("canvas:element-status-update", handleStatusUpdate as EventListener);
-  }, []);
+    const handleElementDeleted = (e: CustomEvent) => {
+      const { elementIds, deletedBindings } = e.detail;
 
-  // Apply visual ghosting to deleted elements (DOM Manipulation)
-  useEffect(() => {
-    const updateStyles = () => {
-      document.querySelectorAll('.canvas-bound-text').forEach(el => {
-        const id = el.getAttribute('data-canvas-link');
-        if (id && deletedElementIds.has(id)) {
-          el.classList.add('is-deleted');
-        } else {
-          el.classList.remove('is-deleted');
+      console.log('[Editor] Elements deleted from Canvas, removing bindings:', elementIds);
+
+      if (!elementIds || !Array.isArray(elementIds)) return;
+
+      // 1. 从bindings state中移除已删除的绑定
+      setBindings(prev => prev.filter(b => !elementIds.includes(b.elementId)));
+
+      // 2. 彻底移除所有UI标记（EditorBindingOverlay的标记）
+      elementIds.forEach((elementId: string) => {
+        // 移除data-element-id的标记
+        const overlayMarkers = document.querySelectorAll(`[data-element-id="${elementId}"]`);
+        overlayMarkers.forEach(marker => {
+          console.log('[Editor] Removing overlay marker for', elementId);
+          marker.remove();
+        });
+
+        // 移除.link-indicator标记
+        const linkIndicators = document.querySelectorAll(`.link-indicator[data-target="${elementId}"]`);
+        linkIndicators.forEach(indicator => {
+          console.log('[Editor] Removing link indicator for', elementId);
+          indicator.remove();
+        });
+
+        // 如果存在canvas-bound-text，需要移除canvasLink样式
+        // 注意：BlockNote的样式需要通过editor API操作
+        const boundTexts = document.querySelectorAll(`.canvas-bound-text[data-canvas-link="${elementId}"]`);
+        if (boundTexts.length > 0 && editor) {
+          console.log('[Editor] Found', boundTexts.length, 'bound texts for', elementId);
+
+          // 通过BlockNote API移除样式（如果可能）
+          // 由于BlockNote样式是inline的，我们需要遍历document找到并移除
+          try {
+            const blocks = editor.document;
+            blocks.forEach((block: any) => {
+              if (block.content && Array.isArray(block.content)) {
+                const hasBinding = block.content.some((content: any) =>
+                  content.styles?.canvasLink === elementId
+                );
+
+                if (hasBinding) {
+                  console.log('[Editor] Removing canvasLink style from block', block.id);
+                  // 移除样式：通过重新设置block content
+                  const newContent = block.content.map((c: any) => {
+                    if (c.styles?.canvasLink === elementId) {
+                      const { canvasLink, ...restStyles } = c.styles;
+                      return { ...c, styles: restStyles };
+                    }
+                    return c;
+                  });
+
+                  editor.updateBlock(block.id, { content: newContent });
+                }
+              }
+            });
+          } catch (err) {
+            console.error('[Editor] Error removing canvasLink style:', err);
+          }
         }
       });
+
+      // 3. 清除deletedElementIds（不再需要灰化，直接删除）
+      setDeletedElementIds(prev => {
+        const updated = new Set(prev);
+        elementIds.forEach(id => updated.delete(id));
+        return updated;
+      });
+
+      console.log('[Editor] Binding cleanup complete for', elementIds.length, 'elements');
     };
 
-    updateStyles();
-    // Observer for new content appearing
-    const observer = new MutationObserver(updateStyles);
-    const editorElement = document.querySelector('.bn-editor');
-    if (editorElement) {
-      observer.observe(editorElement, { childList: true, subtree: true });
-    }
-    return () => observer.disconnect();
-  }, [deletedElementIds]);
+    window.addEventListener('binding:element-deleted', handleElementDeleted as EventListener);
+    return () => window.removeEventListener('binding:element-deleted', handleElementDeleted as EventListener);
+  }, [editor]);
 
 
 

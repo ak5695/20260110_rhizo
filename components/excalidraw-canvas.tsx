@@ -200,13 +200,31 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
         loadCanvas();
     }, [documentId, excalidrawAPI]);
 
-    // 1.5 Load Bindings
+    // 1.5 Load Bindings（企业级：初始化时清理孤立绑定）
     useEffect(() => {
         const loadBindings = async () => {
             if (canvasId) {
+                // 步骤1：清理孤立绑定（刷新后的防御性清理）
+                const { cleanupOrphanedBindings } = await import('@/actions/canvas-bindings');
+                const cleanupResult = await cleanupOrphanedBindings(canvasId);
+
+                if (cleanupResult.success && cleanupResult.deletedCount > 0) {
+                    console.log('[Canvas] Cleaned up', cleanupResult.deletedCount, 'orphaned bindings on page load');
+                    toast.info(`Cleaned ${cleanupResult.deletedCount} orphaned bindings`);
+                }
+
+                // 步骤2：加载活跃绑定（仅加载未删除的）
                 const result = await getCanvasBindings(canvasId);
                 if (result.success) {
-                    setBindings(result.bindings || []);
+                    // 过滤掉isElementDeleted=true的绑定
+                    const activeBindings = (result.bindings || []).filter(b => !b.isElementDeleted);
+                    setBindings(activeBindings);
+
+                    console.log('[Canvas] Loaded', activeBindings.length, 'active bindings');
+
+                    if (result.bindings.length !== activeBindings.length) {
+                        console.warn('[Canvas] Filtered out', result.bindings.length - activeBindings.length, 'ghost bindings');
+                    }
                 }
             }
         };

@@ -86,6 +86,29 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
         };
     }, [showAiChat]);
 
+    // 【企业级】监听拖拽绑定成功事件，自动隐藏Toolbar
+    useEffect(() => {
+        const handleBindingSuccess = (e: CustomEvent) => {
+            const { elementId, blockId } = e.detail;
+
+            console.log('[SelectionToolbar] Binding created successfully, hiding toolbar', { elementId, blockId });
+
+            // 拖拽成功后立即隐藏Toolbar
+            setVisible(false);
+            setSelectedText('');
+            setIsDragging(false);
+
+            // 清除hideTimeout
+            if (hideTimeoutRef.current) {
+                clearTimeout(hideTimeoutRef.current);
+                hideTimeoutRef.current = null;
+            }
+        };
+
+        window.addEventListener('document:canvas-binding-success', handleBindingSuccess as EventListener);
+        return () => window.removeEventListener('document:canvas-binding-success', handleBindingSuccess as EventListener);
+    }, []);
+
     const handleDragStart = (e: React.DragEvent) => {
         setIsDragging(true);
         // Ensure canvas is open so user can drop onto it
