@@ -111,9 +111,12 @@ export default function DocumentIdPage() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-background dark:bg-[#1F1F1F]">
-      {/* 文档编辑区 (文档 = 线性载体) */}
-      <div className={cn("flex-1 flex flex-col overflow-hidden transition-all duration-300", isCanvasFullscreen && "w-0 flex-none hidden")}>
+    <div className="relative h-full overflow-hidden bg-background dark:bg-[#1F1F1F]">
+      {/* 文档编辑区 (文档 = 线性载体) - 左侧 */}
+      <div className={cn(
+        "absolute left-0 top-0 bottom-0 flex flex-col overflow-hidden transition-all duration-500",
+        isCanvasFullscreen ? "w-0 opacity-0" : (isCanvasOpen ? "right-[50%]" : "right-0")
+      )}>
         {/* Navbar 固定在编辑器顶部 */}
         <div className="sticky top-0 z-50 bg-background">
           <Navbar isCanvasOpen={isCanvasOpen} onToggleCanvas={toggleCanvas} />
@@ -134,11 +137,11 @@ export default function DocumentIdPage() {
         </div>
       </div>
 
-      {/* Canvas 画布区 (可视化 = 图形载体) */}
+      {/* Canvas 画布区 (可视化 = 图形载体) - 右侧固定 */}
       {isCanvasOpen && (
         <div className={cn(
-          "relative hidden lg:flex group/resizer transition-all duration-500 h-full flex-col",
-          isCanvasFullscreen ? "w-full" : "w-[50%]"
+          "absolute right-0 top-0 bottom-0 hidden lg:flex group/resizer transition-all duration-500 h-full flex-col",
+          isCanvasFullscreen ? "left-0" : "left-[50%]"
         )}>
           {/* 分界线 */}
           <div className="absolute -left-[0.5px] top-0 bottom-0 w-[1px] bg-border/40 z-50 shadow-[0_0_30px_rgba(0,0,0,0.15)] pointer-events-none" />
@@ -151,8 +154,7 @@ export default function DocumentIdPage() {
             />
           </div>
         </div>
-      )
-      }
+      )}
 
       {/* Selection Toolbar - appears when text is selected */}
       <SelectionToolbar
