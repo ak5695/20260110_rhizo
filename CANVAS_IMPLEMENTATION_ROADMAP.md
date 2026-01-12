@@ -3,359 +3,114 @@
 ## ✅ 已完成
 
 ### 1. 数据库 Schema（100%）
-- ✅ Canvas 存储层
-- ✅ 复合节点表结构
-- ✅ 文档-画布绑定
-- ✅ 变更日志（CRDT支持）
-- ✅ 协作会话追踪
-- ✅ 完整的索引优化
+- ✅ Canvas 存储层 (canvases, canvas_elements)
+- ✅ 复合节点表结构 (compound_nodes)
+- ✅ 文档-画布绑定 (document_canvas_bindings)
+- ✅ 变更日志与协作会话表
+- ✅ 数据库 ID 兼容性修正（支持 Excalidraw 原生 String ID）
 
-**文件**: `db/canvas-schema.ts`, `drizzle/0002_add_canvas_schema.sql`
+**文件**: `db/canvas-schema.ts`, `db/schema.ts`
 
-### 2. 拖拽系统（100%）✨ 🎉
-- ✅ 类型系统定义 (`drag-drop-types.ts`)
-- ✅ 拖拽桥接器 (`drag-drop-bridge.ts`)
-- ✅ 可拖拽组件 (`draggable-content.tsx`)
-  - DraggableContent (基础组件)
-  - DraggableText (文本选区)
-  - DraggableBlock (完整块)
-  - DraggableSemanticNode (语义节点)
-- ✅ Canvas 放置区 (`canvas-drop-zone.tsx`)
-- ✅ 增强的 Excalidraw (`enhanced-excalidraw.tsx`)
-- ✅ 拖拽预览组件 (`drag-preview.tsx`)
-- ✅ Server Actions (创建绑定、保存元素)
-- ✅ Canvas 管理 Actions (`canvas.ts`)
-- ✅ 自动元素样式化（根据源类型）
-- ✅ 视觉反馈（边框高亮、光标指示器）
-- ✅ **Shift+拖拽文本选区** (`use-text-drag.ts`)
-- ✅ **用户提示组件** (`drag-hint.tsx`)
-- ✅ **编辑器集成完成** (`editor.tsx`)
+### 2. 画布元数据与存储 API（100%）✨
+- ✅ **行级增量存储**：支持元素级 CRUD，非大 JSON 覆盖。
+- ✅ **自动异步保存**：1.5s 延迟防抖，确保性能。
+- ✅ **视口记录与恢复**：自动记忆缩放级别 (Zoom) 和视口位置 (X/Y)。
+- ✅ **稳定批量保存**：使用经典 SELECT + INSERT/UPDATE 模式，适配 neon-http 驱动限制。
+- ✅ **分块处理**：INSERT 操作使用 50 元素/批次分块，避免参数限制。
+- ⚠️ **驱动限制**：neon-http 不支持事务，部分失败可能导致不一致（见 `CANVAS_ENTERPRISE_IMPROVEMENTS.md`）
 
-**文件**:
-- `lib/canvas/drag-drop-types.ts` (150行)
-- `lib/canvas/drag-drop-bridge.ts` (250行)
-- `components/canvas/draggable-content.tsx` (205行)
-- `components/canvas/canvas-drop-zone.tsx` (150行)
-- `components/canvas/enhanced-excalidraw.tsx` (120行)
-- `components/canvas/drag-preview.tsx` (100行)
-- `components/editor-drag-handler.tsx` (230行)
-- `components/drag-hint.tsx` (100行)
-- `hooks/use-text-drag.ts` (180行)
-- `actions/canvas-bindings.ts` (180行)
-- `actions/canvas.ts` (80行)
-- `components/excalidraw-canvas.tsx` (已更新)
-- `components/editor.tsx` (已更新)
+**文件**: `actions/canvas.ts`, `components/excalidraw-canvas.tsx`, `CANVAS_ENTERPRISE_IMPROVEMENTS.md`
 
-**总代码量**: ~1,745行
+### 3. 拖拽与选区交互系统（100%）✨ 🎉
+- ✅ **统一选区工具栏 (SelectionToolbar)**：集成 AI、画布、概念操作。
+- ✅ **自动化交互**：开始拖拽时若画布隐藏，系统自动平滑展开。
+- ✅ **多源类型识别**：支持标题、代码块、列表项的差异化样式。
+- ✅ **即时预览**：带有渐变色和图标的高级拖拽预览效果。
+
+**文件**: `components/selection-toolbar.tsx`, `lib/canvas/drag-drop-bridge.ts`
+
+### 4. AI 助手与编辑器深度联动（100%）
+- ✅ **富文本渲染**：AI 回复支持 Markdown（列表、代码、标题）。
+- ✅ **上下文操作**：每条消息下方新增 "Copy" 和 "Insert" 按钮。
+- ✅ **智能插入逻辑**：自动将内容解析为 BlockNote 块并插入光标位置后，光标物理追随至末尾。
+
+**文件**: `components/ai-chat-modal.tsx`, `components/editor.tsx`
+
+---
+
+## � 待实现模块
+
+### 5. 复合节点管理 (Next)
+**优先级：高**
+- 多选元素创建“组”概念。
+- 逻辑组整体移动、缩放。
+- 在数据库中维护 `compoundNodeId` 树形结构。
+
+### 6. 文档-画布双向绑定引擎
+**优先级：最高**
+- 点击文档对应的 Block，画布自动聚焦/高亮对应元素。
+- 反向联动：点击画布元素，文档滚动到对应段落。
+- 状态同步：文档内容修改，画布元素实时感知并更新。
+
+### 7. 实时协作与冲突解决
+**优先级：中**
+- Yjs/CRDT 深度集成。
+- 多人协作光标共享。
+
+### 8. 语义图谱增强
+**优先级：中**
+- 基于画布结构的语义搜索。
+- AI 自动发现并建议新的文档绑定关系。
+
+### 9. UI/UX 优化
+**优先级：高**
+- ✅ **画布展开动画优化**：画布放大时向左边扩展，而非向右（保持编辑器位置稳定）。
+- **大纲视图功能**：类似 Notion 的文档大纲，支持快速导航和层级展示。
+- **节点查询功能增强**：评估是否需要优化语义节点的搜索和过滤能力。
+
+### 10. 数据导入导出
+**优先级：中**
+- **Notion 集成**：支持导入 Notion 笔记，支持导出到 Notion。
+- **标准格式支持**：Markdown、PDF、HTML 等格式的导出。
+- **批量操作**：支持批量导出多个文档。
+
+### 11. 性能优化
+**优先级：高**
+- **三级缓存架构**：
+  - L1: 内存缓存（React state/context）
+  - L2: 本地存储（IndexedDB/LocalStorage）
+  - L3: 远程数据库（PostgreSQL）
+- **本地优先加载**：优先从本地缓存加载，提升打开速度。
+- **增量同步**：只同步变更的数据，减少网络传输。
+
+### 12. 项目可见性
+**优先级：中**
+- **更新日志系统**：Git 提交记录自动生成项目更新日记。
+- **版本历史展示**：在应用内展示项目的迭代历史和新功能。
+- **用户反馈渠道**：收集用户反馈和功能建议。
+
+---
+
+## � 进度统计
+- **核心架构**: 100%
+- **存储系统**: 100%
+- **交互系统**: 90% (待实现组操作)
+- **同步系统**: 30% (已完成单向存储，待双向联动)
 
 **完成日期**: 2026-01-12
-
-**使用方法**:
-1. 在编辑器中选中文字（5个字符以上）
-2. 按住 **Shift** 键
-3. 拖拽选中的文字到右侧画布
-4. 松开鼠标，自动创建可视化元素和绑定关系
-
----
-
-## 🚧 待实现模块
-
-### 2. 复合节点管理器（优先级：高）
-**估计代码行数**: ~800 行
-
-**功能**:
-- 创建复合节点（多选元素 → 组合）
-- 移动复合节点（保持内部相对位置）
-- 拆分复合节点
-- 嵌套复合节点支持
-- 边界框自动计算
-
-**文件结构**:
-```
-lib/canvas/
-  ├── compound-node-manager.ts  (核心逻辑)
-  ├── spatial-calculator.ts     (空间计算)
-  └── compound-types.ts         (类型定义)
-
-actions/
-  ├── compound-nodes.ts         (Server Actions)
-```
-
----
-
-### 3. 画布元素存储 API（优先级：高）
-**估计代码行数**: ~600 行
-
-**功能**:
-- 增量更新 API
-- 批量操作优化
-- 分块加载（大画布）
-- 版本控制和冲突解决
-
-**文件结构**:
-```
-actions/
-  ├── canvas-elements.ts        (CRUD操作)
-  ├── canvas-sync.ts            (同步逻辑)
-
-lib/canvas/
-  ├── element-storage.ts        (存储层)
-  ├── chunking-strategy.ts      (分块策略)
-```
-
----
-
-### 4. 文档-画布绑定系统（优先级：最高）
-**估计代码行数**: ~1000 行
-
-**功能**:
-- 创建/删除绑定
-- 双向同步（文档 ↔ 画布）
-- 绑定状态更新
-- 高亮和视觉反馈
-
-**文件结构**:
-```
-lib/canvas/
-  ├── binding-manager.ts        (绑定核心)
-  ├── sync-engine.ts            (同步引擎)
-  ├── binding-types.ts          (类型定义)
-
-actions/
-  ├── canvas-bindings.ts        (Server Actions)
-
-hooks/
-  ├── use-canvas-binding.ts     (React Hook)
-```
-
----
-
-### 5. ~~拖拽系统~~ ✅ 已完成
-详见上方"已完成"部分
-
----
-
-### 6. 人类裁决集成（优先级：高）
-**估计代码行数**: ~500 行
-
-**功能**:
-- AI 生成绑定的审核流程
-- 批准/拒绝/修改界面
-- 裁决历史追踪
-
-**文件结构**:
-```
-components/canvas/
-  ├── arbitration-panel.tsx     (裁决面板)
-  ├── binding-review-card.tsx   (绑定审核卡片)
-
-actions/
-  ├── arbitration.ts            (裁决 Actions)
-```
-
----
-
-### 7. 实时协作（优先级：中）
-**估计代码行数**: ~900 行
-
-**功能**:
-- WebSocket 连接管理
-- 光标位置共享
-- 增量更新广播
-- 冲突解决（CRDT）
-
-**文件结构**:
-```
-lib/realtime/
-  ├── websocket-server.ts       (WebSocket服务)
-  ├── crdt-manager.ts           (CRDT逻辑)
-  ├── session-manager.ts        (会话管理)
-
-app/api/ws/
-  └── canvas/
-      └── route.ts              (WebSocket Route)
-```
-
----
-
-### 8. Excalidraw 集成层（优先级：高）
-**估计代码行数**: ~600 行
-
-**功能**:
-- Excalidraw 事件监听
-- 元素变更捕获
-- 自定义工具栏
-- 画布状态同步
-
-**文件结构**:
-```
-components/canvas/
-  ├── excalidraw-wrapper.tsx    (Excalidraw封装)
-  ├── canvas-toolbar.tsx        (自定义工具栏)
-  ├── element-inspector.tsx     (元素检查器)
-
-lib/canvas/
-  ├── excalidraw-adapter.ts     (适配器)
-```
-
----
-
-### 9. 语义搜索和 AI 增强（优先级：中）
-**估计代码行数**: ~700 行
-
-**功能**:
-- 基于绑定的语义搜索
-- AI 自动建议绑定
-- 智能摘要生成
-
-**文件结构**:
-```
-lib/ai/
-  ├── semantic-search.ts        (语义搜索)
-  ├── binding-suggester.ts      (绑定建议)
-  ├── summarizer.ts             (摘要生成)
-
-app/api/ai/
-  ├── suggest-bindings/
-      └── route.ts              (建议API)
-```
-
----
-
-### 10. 前端组件库（优先级：高）
-**估计代码行数**: ~1200 行
-
-**功能**:
-- 画布主组件
-- 绑定可视化
-- 复合节点UI
-- 协作指示器
-
-**文件结构**:
-```
-components/canvas/
-  ├── canvas-view.tsx           (主视图)
-  ├── binding-indicator.tsx     (绑定指示器)
-  ├── compound-node-badge.tsx   (复合节点标记)
-  ├── collaboration-cursor.tsx  (协作光标)
-  ├── canvas-minimap.tsx        (画布缩略图)
-```
-
----
-
-## 📊 实现优先级建议
-
-### 阶段 1: 核心基础（第1-2周）
-1. 画布元素存储 API
-2. 复合节点管理器
-3. Excalidraw 集成层
-
-### 阶段 2: 图文联动（第3-4周）
-4. 文档-画布绑定系统
-5. 拖拽系统
-6. 人类裁决集成
-
-### 阶段 3: 高级功能（第5-6周）
-7. 实时协作
-8. 语义搜索和 AI 增强
-
-### 阶段 4: UI 完善（第7-8周）
-9. 前端组件库
-10. 性能优化和测试
 
 ---
 
 ## 🎯 下一步建议
 
-### ✅ 编辑器拖拽集成已完成！
+### 即将实现（按优先级排序）
+1. **画布展开动画修正**：向左扩展而非向右，保持编辑器稳定。
+2. **文档大纲功能**：Notion 风格的层级大纲视图，快速导航。
+3. **三级缓存架构**：本地优先加载，显著提升打开速度。
+4. **双向锚点跳转**：文档 ↔ 画布元素双向导航。
+5. **复合节点管理**：Excalidraw Group 功能与数据库持久化。
+6. **Notion 导入导出**：与 Notion 互通，方便数据迁移。
+7. **项目更新日志**：自动化 Git 提交记录展示。
 
-**实现方式**：Shift + 拖拽选中文字
-
-**功能特性**：
-- ✅ 选中文字按住 Shift 键即可拖拽
-- ✅ 自动检测源类型（标题/段落/代码）
-- ✅ 精美的拖拽预览（带图标和渐变色）
-- ✅ 智能提示（首次使用会显示提示）
-- ✅ 完整的视觉反馈
-
-**测试方法**：
-```bash
-# 启动项目
-npm run dev
-
-# 打开任意文档
-# 1. 选中一段文字（5个字符以上）
-# 2. 按住 Shift 键
-# 3. 拖拽到右侧画布
-# 4. 松开即可创建元素
-```
-
----
-
-## 🎯 下一步优先级
-
-**后续模块**（按推荐顺序）：
-
-1. **数据库迁移** ⬅️ 立即执行
-   - 运行 `npx drizzle-kit push` 应用 canvas schema
-   - 处理 semantic_nodes 的唯一约束冲突
-
-2. **测试完整流程** ⬅️ 重要
-   - 启动项目验证拖拽功能
-   - 检查数据库绑定记录
-   - 修复可能的 bug
-
-3. **Excalidraw 集成层优化**
-   - 监听画布元素选择事件
-   - 实现元素点击高亮对应文档位置
-   - 添加元素编辑追踪
-
-4. **画布元素存储 API 完善**
-   - 增量更新和防抖保存
-   - 批量操作优化
-   - 大画布分块加载
-
-5. **复合节点管理器**
-   - 多选元素创建组
-   - 组移动和拆分
-   - 嵌套组支持
-
-6. **双向同步系统**
-   - 画布 → 文档方向
-   - 文档修改更新画布
-   - 绑定关系可视化
-
----
-
-## 💡 技术栈
-
-- **前端**: React, TypeScript, Excalidraw
-- **后端**: Next.js Server Actions, WebSocket
-- **数据库**: PostgreSQL + Drizzle ORM
-- **实时**: WebSocket + CRDT (Yjs或自研)
-- **AI**: Gemini API (已集成)
-
----
-
-## 📝 数据库迁移
-
-运行以下命令创建新表：
-
-```bash
-# 生成迁移
-npx drizzle-kit generate:pg
-
-# 运行迁移
-npx drizzle-kit push:pg
-```
-
----
-
-## ❓ 接下来做什么？
-
-**请告诉我你想优先实现哪个模块**，我会提供完整的、可运行的代码实现。
-
-推荐顺序：
-1. Excalidraw 集成层（让画布能工作）
-2. 拖拽系统（最直观的功能）
-3. 文档-画布绑定（核心价值）
+### 待评估
+- **节点查询优化**：根据实际使用情况决定是否需要增强搜索功能。

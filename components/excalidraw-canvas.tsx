@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import "@excalidraw/excalidraw/index.css";
 import { useTheme } from "next-themes";
-import { Maximize, Minimize, AlertCircle, Loader2 } from "lucide-react";
+import { Maximize, Minimize, AlertCircle, Loader2, PlusCircle } from "lucide-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { DRAG_MIME_TYPE } from "@/lib/canvas/drag-drop-types";
 import { dragDropBridge } from "@/lib/canvas/drag-drop-bridge";
@@ -44,7 +44,7 @@ const ToolbarPortal = ({ isFullscreen, onToggle }: { isFullscreen?: boolean; onT
             className="flex items-center justify-center rounded-lg transition-all transform hover:scale-105 pointer-events-auto bg-white dark:bg-[#232329] text-gray-900 dark:text-[#ced4da] shadow-lg border border-gray-200 dark:border-white/10 hover:border-rose-500/50"
             style={{
                 position: "absolute",
-                top: "4.5rem",
+                top: "5rem",
                 left: "1rem",
                 width: "2.5rem",
                 height: "2.5rem",
@@ -125,9 +125,14 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             if (currentSig === lastElementsRef.current) return;
 
             lastElementsRef.current = currentSig;
-            const res = await saveCanvasElements(cid, elements);
-            if (!res.success) {
-                console.error("[Canvas] Failed to save elements");
+            try {
+                const res = await saveCanvasElements(cid, elements);
+                if (!res.success) {
+                    console.error("[Canvas] Failed to save elements:", res.error);
+                    toast.error("Failed to auto-save canvas");
+                }
+            } catch (err) {
+                console.error("[Canvas] Failed to save elements - exception:", err);
                 toast.error("Failed to auto-save canvas");
             }
         }, 1500),
