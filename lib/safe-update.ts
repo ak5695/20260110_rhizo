@@ -293,18 +293,20 @@ export async function withRetry<T>(
  * Safely create a new document with audit trail
  */
 export async function safeCreateDocument(params: {
+  id?: string;
   title: string;
   userId: string;
   parentDocumentId?: string;
   ipAddress?: string;
   userAgent?: string;
 }): Promise<typeof documents.$inferSelect> {
-  const { title, userId, parentDocumentId, ipAddress, userAgent } = params;
+  const { id, title, userId, parentDocumentId, ipAddress, userAgent } = params;
 
   // Create document (no transaction support in neon-http)
   const [document] = await db
     .insert(documents)
     .values({
+      ...(id ? { id: id as any } : {}),
       title,
       userId,
       lastModifiedBy: userId,

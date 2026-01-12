@@ -94,17 +94,25 @@ export const Navigation = () => {
   };
 
   const handleCreate = () => {
-    const promise = create({ title: "Untitled" }).then((document) => {
+    const tempId = crypto.randomUUID();
+
+    // 1. Instant Navigation (Optimistic)
+    router.push(`/documents/${tempId}`);
+
+    // 2. Background Creation (Non-blocking)
+    const promise = create({
+      id: tempId,
+      title: "Untitled"
+    }).then(() => {
       // Dispatch event to refresh document list immediately
       window.dispatchEvent(new CustomEvent("documents-changed"));
-      router.push(`/documents/${document.id}`);
     });
 
     toast.promise(promise, {
-      loading: "Creating a new note...",
-      success: "New note created",
-      error: "Failed to create new note",
-    });
+      loading: "Initializing note...",
+      success: "Note ready",
+      error: "Sync failed - please refresh",
+    }, { id: "create-doc" });
   };
 
   // Initialize sidebar based on device type

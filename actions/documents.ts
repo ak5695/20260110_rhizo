@@ -16,10 +16,16 @@ import {
 import { documentCache } from "@/lib/cache/document-cache"
 
 const getUser = async () => {
-    const session = await auth.api.getSession({
-        headers: await headers()
-    })
-    return session?.user
+    try {
+        const headersList = await headers();
+        const session = await auth.api.getSession({
+            headers: headersList
+        });
+        return session?.user;
+    } catch (e) {
+        console.error("[getUser] Auth check failed:", e);
+        return null;
+    }
 }
 
 export const archive = async (id: string) => {
@@ -99,85 +105,102 @@ export const archive = async (id: string) => {
 }
 
 export const getSidebar = async (parentDocumentId?: string) => {
-    const user = await getUser()
-    if (!user) return []
+    try {
+        const user = await getUser()
+        if (!user) return []
 
-    // parentDocumentId is undefined for root documents
-    // In DB, root documents have parentDocumentId as null
+        // Basic UUID format check if parentDocumentId is provided
+        if (parentDocumentId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parentDocumentId)) {
+            console.warn("[getSidebar] Invalid parentDocumentId format:", parentDocumentId);
+            return [];
+        }
 
-    const data = await db.select().from(documents)
-        .where(
-            and(
-                eq(documents.userId, user.id),
-                parentDocumentId ? eq(documents.parentDocumentId, parentDocumentId) : isNull(documents.parentDocumentId),
-                eq(documents.isArchived, false)
+        const data = await db.select().from(documents)
+            .where(
+                and(
+                    eq(documents.userId, user.id),
+                    parentDocumentId ? eq(documents.parentDocumentId, parentDocumentId) : isNull(documents.parentDocumentId),
+                    eq(documents.isArchived, false)
+                )
             )
-        )
-        .orderBy(desc(documents.createdAt))
+            .orderBy(desc(documents.createdAt))
 
-    return data
+        return data
+    } catch (error) {
+        console.error("[getSidebar] Failed to fetch sidebar:", error);
+        return [];
+    }
 }
 
-export const create = async (args: { title: string, parentDocumentId?: string }) => {
+export const create = async (args: { id?: string, title: string, parentDocumentId?: string }) => {
     const user = await getUser()
     if (!user) throw new Error("Unauthorized")
 
     // Use safe create with audit trail
     const newDoc = await safeCreateDocument({
+        id: args.id,
         title: args.title,
         userId: user.id,
         parentDocumentId: args.parentDocumentId,
     })
 
-    // Notion-like: If created inside a parent, add a "page" block to parent content
+    // ⚡ Notion-like Performance: Async parent update (non-blocking)
+    // 将父文档更新改为异步任务，不阻塞创建返回
     if (args.parentDocumentId) {
-        try {
-            const parent = await getDocumentWithVersion(args.parentDocumentId, user.id);
-            if (parent) {
-                let content: any[] = [];
-                try {
-                    content = parent.document.content ? JSON.parse(parent.document.content) : [];
-                } catch (e) {
-                    content = [];
-                }
-
-                // Append reference block (type: page)
-                const pageBlock = {
-                    id: Math.random().toString(36).substring(2, 11),
-                    type: "page",
-                    props: {
-                        backgroundColor: "default",
-                        textColor: "default",
-                        textAlignment: "left",
-                        pageId: newDoc.id,
-                        title: args.title
-                    },
-                    children: []
-                };
-
-                content.push(pageBlock);
-
-                await safeUpdateDocument({
-                    documentId: parent.document.id,
-                    updates: { content: JSON.stringify(content) },
-                    options: {
-                        expectedVersion: parent.version,
-                        userId: user.id
+        // 使用 Promise.resolve().then() 创建微任务，立即返回给客户端
+        Promise.resolve().then(async () => {
+            try {
+                const parent = await getDocumentWithVersion(args.parentDocumentId!, user.id);
+                if (parent) {
+                    let content: any[] = [];
+                    try {
+                        content = parent.document.content ? JSON.parse(parent.document.content) : [];
+                    } catch (e) {
+                        content = [];
                     }
-                });
 
-                // Invalidate parent cache
-                await documentCache.invalidate(parent.document.id);
+                    // Append reference block (type: page)
+                    const pageBlock = {
+                        id: Math.random().toString(36).substring(2, 11),
+                        type: "page",
+                        props: {
+                            backgroundColor: "default",
+                            textColor: "default",
+                            textAlignment: "left",
+                            pageId: newDoc.id,
+                            title: args.title
+                        },
+                        children: []
+                    };
+
+                    content.push(pageBlock);
+
+                    await safeUpdateDocument({
+                        documentId: parent.document.id,
+                        updates: { content: JSON.stringify(content) },
+                        options: {
+                            expectedVersion: parent.version,
+                            userId: user.id
+                        }
+                    });
+
+                    // Invalidate parent cache
+                    await documentCache.invalidate(parent.document.id);
+
+                    // 仅刷新父文档路径
+                    revalidatePath(`/documents/${args.parentDocumentId}`);
+                }
+            } catch (error) {
+                // 静默失败，不影响创建流程
+                console.error("[NotionSync] Async parent link failed:", error);
             }
-        } catch (error) {
-            console.error("[NotionSync] Parent link injection failed:", error);
-        }
+        });
     }
 
+    // ⚡ 仅刷新必要路径
     revalidatePath("/documents")
-    if (args.parentDocumentId) {
-        revalidatePath(`/documents/${args.parentDocumentId}`);
-    }
+
+    // ✅ 立即返回新文档（不等待父文档更新）
     return newDoc
 }
 
@@ -320,25 +343,35 @@ export const getSearch = async () => {
 }
 
 export const getById = async (documentId: string) => {
-    const user = await getUser()
-    // We fetch document first to check published status
-    const document = await db.query.documents.findFirst({
-        where: eq(documents.id, documentId)
-    })
+    try {
+        // Basic UUID format check
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(documentId)) {
+            return null;
+        }
 
-    if (!document) throw new Error("Not found")
+        const user = await getUser()
+        // We fetch document first to check published status
+        const document = await db.query.documents.findFirst({
+            where: eq(documents.id, documentId)
+        })
 
-    if (document.isPublished && !document.isArchived) {
+        if (!document) return null;
+
+        if (document.isPublished && !document.isArchived) {
+            return document
+        }
+
+        if (!user) throw new Error("Not authenticated")
+
+        if (document.userId !== user.id) {
+            throw new Error("Unauthorized")
+        }
+
         return document
+    } catch (error) {
+        console.error("[getById] Failed to fetch document:", error);
+        return null;
     }
-
-    if (!user) throw new Error("Not authenticated")
-
-    if (document.userId !== user.id) {
-        throw new Error("Unauthorized")
-    }
-
-    return document
 }
 
 export const update = async (args: {

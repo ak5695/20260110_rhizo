@@ -1,6 +1,7 @@
 "use client";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getById } from "@/actions/documents";
 import { Toolbar } from "@/components/toolbar";
@@ -22,12 +23,31 @@ import {
 export default function DocumentIdPage() {
   const { documentId } = useParams();
   const Editor = useMemo(
-    () => dynamic(() => import("@/components/editor"), { ssr: false }),
+    () => dynamic(() => import("@/components/editor"), {
+      ssr: false,
+      loading: () => (
+        <div className="space-y-4 pt-4">
+          <Skeleton className="h-4 w-[80%]" />
+          <Skeleton className="h-4 w-[40%]" />
+          <Skeleton className="h-4 w-[60%]" />
+        </div>
+      )
+    }),
     [],
   );
 
   const ExcalidrawCanvas = useMemo(
-    () => dynamic(() => import("@/components/excalidraw-canvas"), { ssr: false }),
+    () => dynamic(() => import("@/components/excalidraw-canvas"), {
+      ssr: false,
+      loading: () => (
+        <div className="h-full w-full flex items-center justify-center bg-muted/20">
+          <div className="flex flex-col items-center gap-y-2">
+            <Loader2 className="h-6 w-6 text-rose-500 animate-spin" />
+            <p className="text-xs text-muted-foreground font-medium">Canvas Initializing...</p>
+          </div>
+        </div>
+      )
+    }),
     [],
   );
 
@@ -41,15 +61,49 @@ export default function DocumentIdPage() {
   const isOutlineOpen = useOutlineOpen();
   const { toggleCanvas, toggleFullscreen, toggleOutline, openCanvas } = useLayoutStore();
 
+  // ⚡ Enterprise Load Strategy (Notion-like)
+  // 1. 立即尝试加载（乐观）
+  // 2. 快速重试（指数退避，最大3次）
+  // 3. 处理乐观创建的Race Condition
   useEffect(() => {
-    if (typeof documentId === "string") {
-      getById(documentId)
-        .then((doc) => {
-          setDocument(doc);
-          documentVersionRef.current = doc.version;
-        })
-        .catch(() => setDocument(null));
-    }
+    if (typeof documentId !== "string") return;
+
+    let isMounted = true;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    const load = async () => {
+      try {
+        const doc = await getById(documentId);
+
+        if (doc) {
+          if (isMounted) {
+            setDocument(doc);
+            documentVersionRef.current = doc.version;
+          }
+        } else if (retryCount < maxRetries) {
+          // ⚡ 优化：使用指数退避，但首次重试更快（100ms）
+          // Notion的策略：首次快速重试，后续逐渐延长
+          retryCount++;
+          const delay = retryCount === 1 ? 100 : 200 * Math.pow(2, retryCount - 2);
+          console.log(`[DocumentPage] Optimistic load retry ${retryCount}/${maxRetries} after ${delay}ms`);
+          setTimeout(load, delay);
+        } else {
+          if (isMounted) setDocument(null);
+        }
+      } catch (err) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          const delay = 200 * Math.pow(2, retryCount - 1);
+          setTimeout(load, delay);
+        } else if (isMounted) {
+          setDocument(null);
+        }
+      }
+    };
+
+    load();
+    return () => { isMounted = false; };
   }, [documentId]);
 
   // Listen for document conflicts
@@ -82,16 +136,24 @@ export default function DocumentIdPage() {
     }
   }, [documentId, document?.userId]);
 
+  // Fast Shell: If document is still loading, show the basic structure immediately
+  // to prevent the "Blank Screen" flash that users hate.
   if (document === undefined) {
     return (
-      <div>
-        <Cover.Skeleton />
-        <div className="md:max-w-3xl lg:max-w-4xl mx-auto mt-10">
-          <div className="space-y-4 pl-8 pt-4">
-            <Skeleton className="h-14 w-[50%]" />
-            <Skeleton className="h-4 w-[80%]" />
-            <Skeleton className="h-4 w-[40%]" />
-            <Skeleton className="h-4 w-[60%]" />
+      <div className="relative h-full overflow-hidden bg-background dark:bg-[#1F1F1F]">
+        <div className="absolute left-0 top-0 bottom-0 right-0 flex flex-col overflow-hidden">
+          <div className="h-12 border-b bg-background/50 flex items-center px-4">
+            <Skeleton className="h-5 w-32" />
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <div className="pb-40">
+              <Cover.Skeleton />
+              <div className="md:max-w-3xl lg:max-w-4xl mx-auto mt-10 space-y-4 px-8">
+                <Skeleton className="h-10 w-[60%]" />
+                <Skeleton className="h-4 w-[80%]" />
+                <Skeleton className="h-4 w-[40%]" />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -99,7 +161,11 @@ export default function DocumentIdPage() {
   }
 
   if (document === null) {
-    return <div>Not found</div>;
+    return (
+      <div className="h-full flex flex-col items-center justify-center space-y-4">
+        <p className="text-muted-foreground">Document not found</p>
+      </div>
+    );
   }
 
   return (
