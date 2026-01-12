@@ -15,7 +15,6 @@ import React, {
   useCallback,
   useEffect,
   useRef,
-  useState,
 } from "react";
 import { useMediaQuery } from "usehooks-ts";
 import { useParams, usePathname, useRouter } from "next/navigation";
@@ -33,19 +32,36 @@ import {
 import { TrashBox } from "@/components/main/trash-box";
 import { useSearch } from "@/hooks/use-search";
 import { useSettings } from "@/hooks/use-settings";
+import { useSidebarStore } from "@/store/use-sidebar-store";
 
 export const Navigation = () => {
   const router = useRouter();
   const search = useSearch();
   const settings = useSettings();
-  const params = useParams();
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 768px)");
 
+  // Use Zustand store for sidebar state
+  const {
+    isCollapsed,
+    isResetting,
+    width,
+    collapse,
+    expand,
+    toggle,
+    setWidth,
+    reset
+  } = useSidebarStore();
+
   const isResizingRef = useRef(false);
   const sidebarRef = useRef<ElementRef<"aside">>(null);
-  const [isResetting, setIsResetting] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(isMobile);
+
+  // Sync sidebar width with DOM
+  useEffect(() => {
+    if (sidebarRef.current) {
+      sidebarRef.current.style.width = isCollapsed ? "0" : `${width}px`;
+    }
+  }, [width, isCollapsed]);
 
   const handleMouseDown = (
     event: React.MouseEvent<HTMLDivElement, MouseEvent>,
@@ -68,6 +84,7 @@ export const Navigation = () => {
     if (sidebarRef.current) {
       sidebarRef.current.style.width = `${newWidth}px`;
     }
+    setWidth(newWidth);
   };
 
   const handleMouseUp = () => {
@@ -76,32 +93,12 @@ export const Navigation = () => {
     document.removeEventListener("mouseup", handleMouseUp);
   };
 
-  const resetWidth = useCallback(() => {
-    if (sidebarRef.current) {
-      setIsCollapsed(false);
-      setIsResetting(true);
-
-      sidebarRef.current.style.width = isMobile ? "100%" : "240px";
-
-      setTimeout(() => setIsResetting(false), 300);
-    }
-  }, [isMobile]);
-
-  const collapse = () => {
-    if (sidebarRef.current) {
-      setIsCollapsed(true);
-      setIsResetting(true);
-
-      sidebarRef.current.style.width = "0";
-
-      setTimeout(() => setIsResetting(false), 300);
-    }
-  };
-
   const handleCreate = () => {
-    const promise = create({ title: "Untitled" }).then((document) =>
-      router.push(`/documents/${document.id}`),
-    );
+    const promise = create({ title: "Untitled" }).then((document) => {
+      // Dispatch event to refresh document list immediately
+      window.dispatchEvent(new CustomEvent("documents-changed"));
+      router.push(`/documents/${document.id}`);
+    });
 
     toast.promise(promise, {
       loading: "Creating a new note...",
@@ -110,55 +107,31 @@ export const Navigation = () => {
     });
   };
 
+  // Initialize sidebar based on device type
   useEffect(() => {
-    isMobile ? collapse() : resetWidth();
-  }, [isMobile, resetWidth]);
+    reset(isMobile);
+  }, [isMobile, reset]);
 
+  // Collapse on mobile when navigating
   useEffect(() => {
     if (isMobile) collapse();
-  }, [pathname, isMobile]);
-
-  useEffect(() => {
-    const handleReset = () => resetWidth();
-    const handleCollapse = () => collapse();
-    const handleToggle = () => isCollapsed ? resetWidth() : collapse();
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("jotion-reset-sidebar", handleReset);
-      window.addEventListener("jotion-collapse-sidebar", handleCollapse);
-      window.addEventListener("jotion-toggle-sidebar", handleToggle);
-    }
-
-    return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("jotion-reset-sidebar", handleReset);
-        window.removeEventListener("jotion-collapse-sidebar", handleCollapse);
-        window.removeEventListener("jotion-toggle-sidebar", handleToggle);
-      }
-    };
-  }, [resetWidth, isCollapsed]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("jotion-sidebar-change", { detail: { isCollapsed } }));
-    }
-  }, [isCollapsed]);
+  }, [pathname, isMobile, collapse]);
 
   return (
     <>
       <aside
         ref={sidebarRef}
         className={cn(
-          "group/sidebar h-full bg-secondary overflow-y-auto relative flex w-60 flex-col z-[99999] text-base",
+          "group/sidebar h-full bg-secondary overflow-y-auto relative flex w-60 flex-col z-[99999]",
           isResetting && "transition-all ease-in-out duration-300",
           isMobile && "w-0",
         )}
       >
         <div
-          role="botton"
+          role="button"
           onClick={collapse}
           className={cn(
-            "h-6 w-6 text-muted-foreground rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 absolute top-3 right-2 transition",
+            "h-6 w-6 text-muted-foreground rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 absolute top-3 right-2 transition cursor-pointer",
             isMobile && "opacity-100",
           )}
         >
@@ -188,7 +161,7 @@ export const Navigation = () => {
         </div>
         <div
           onMouseDown={handleMouseDown}
-          onClick={resetWidth}
+          onClick={expand}
           className="opacity-0 group-hover/sidebar:opacity-100 transition cursor-ew-resize absolute h-full w-1 bg-primary/10 right-0 top-0"
         />
       </aside>

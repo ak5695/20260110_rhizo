@@ -24,7 +24,10 @@ export const Menu = ({ documentId }: MenuProps) => {
   const { data: session } = authClient.useSession();
 
   const onArchive = () => {
-    const promise = archive(documentId);
+    const promise = archive(documentId).then(() => {
+      // Dispatch event to refresh document list immediately
+      window.dispatchEvent(new CustomEvent("documents-changed"));
+    });
     toast.promise(promise, {
       loading: "Moving to trash...",
       success: "Note moved to trash!",

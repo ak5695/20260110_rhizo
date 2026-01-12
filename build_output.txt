@@ -1,0 +1,23 @@
+
+> notion-clone@0.1.1 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 11.6s
+  Running TypeScript ...
+Failed to compile.
+
+./components/editor-drag-handler.tsx:111:7
+Type error: 'e.dataTransfer' is possibly 'null'.
+
+[0m [90m 109 |[39m
+ [90m 110 |[39m       [90m// Set drag data[39m
+[31m[1m>[22m[39m[90m 111 |[39m       e[33m.[39mdataTransfer[33m.[39msetData([33mDRAG_MIME_TYPE[39m[33m,[39m dragDropBridge[33m.[39mserializeDragPayload(payload))[33m;[39m
+ [90m     |[39m       [31m[1m^[22m[39m
+ [90m 112 |[39m       e[33m.[39mdataTransfer[33m.[39msetData([32m"text/plain"[39m[33m,[39m selectedText)[33m;[39m
+ [90m 113 |[39m       e[33m.[39mdataTransfer[33m.[39meffectAllowed [33m=[39m [32m"copy"[39m[33m;[39m
+ [90m 114 |[39m[0m
+Next.js build worker exited with code: 1 and signal: null

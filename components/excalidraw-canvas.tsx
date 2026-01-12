@@ -11,7 +11,10 @@ import { dragDropBridge } from "@/lib/canvas/drag-drop-bridge";
 import { v4 as uuidv4 } from "uuid";
 import debounce from "lodash.debounce";
 import { getOrCreateCanvas, saveCanvasElements, updateCanvasViewport } from "@/actions/canvas";
+import { createCanvasBinding, getCanvasBindings } from "@/actions/canvas-bindings";
+import { Link2 } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigationStore, useElementTarget } from "@/store/use-navigation-store";
 
 const Excalidraw = dynamic(
     () => import("@excalidraw/excalidraw").then((mod) => mod.Excalidraw),
@@ -31,7 +34,7 @@ const Excalidraw = dynamic(
 interface ExcalidrawCanvasProps {
     documentId: string;
     className?: string;
-    onChange?: (elements: any[], appState: any) => void;
+    onChange?: (elements: readonly any[], appState: any) => void;
     isFullscreen?: boolean;
     onToggleFullscreen?: () => void;
 }
@@ -71,10 +74,13 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
     const [isLoaded, setIsLoaded] = useState(false);
     const [initialElements, setInitialElements] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [bindings, setBindings] = useState<any[]>([]);
 
     // Track state versions to avoid redundant saves
     const lastElementsRef = useRef<string>("");
     const lastViewportRef = useRef<string>("");
+    const lastSelectedIdRef = useRef<string | null>(null);
+    // Removed viewport state to optimize performance as we no longer use HTML overlay
 
     // 1. Initial Loading
     useEffect(() => {
@@ -116,9 +122,48 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
         loadCanvas();
     }, [documentId, excalidrawAPI]);
 
+    // 1.5 Load Bindings
+    useEffect(() => {
+        const loadBindings = async () => {
+            if (canvasId) {
+                const result = await getCanvasBindings(canvasId);
+                if (result.success) {
+                    setBindings(result.bindings || []);
+                }
+            }
+        };
+        loadBindings();
+    }, [canvasId]);
+
+    // Use Zustand navigation store for cross-component navigation
+    const elementTarget = useElementTarget();
+    const { clearElementTarget, jumpToBlock } = useNavigationStore();
+
+    // 1.8 Handle Jump-to-Element from Document (via Zustand store)
+    useEffect(() => {
+        if (!elementTarget || !excalidrawAPI) return;
+
+        const elements = excalidrawAPI.getSceneElements();
+        const element = elements.find((el: any) => el.id === elementTarget.id);
+
+        if (element) {
+            // Focus and zoom to element
+            excalidrawAPI.scrollToContent(element, { fitToViewport: true, padding: 100 });
+            excalidrawAPI.updateScene({
+                appState: {
+                    ...excalidrawAPI.getAppState(),
+                    selectedElementIds: { [elementTarget.id]: true }
+                }
+            });
+        }
+
+        // Clear the target after navigation
+        clearElementTarget();
+    }, [elementTarget, excalidrawAPI, clearElementTarget]);
+
     // 2. Debounced Persistence
     const debouncedSave = useCallback(
-        debounce(async (cid: string, elements: any[]) => {
+        debounce(async (cid: string, elements: readonly any[]) => {
             const elementsToSave = elements.filter(el => !el.isDeleted);
             const currentSig = JSON.stringify(elementsToSave);
 
@@ -126,7 +171,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
 
             lastElementsRef.current = currentSig;
             try {
-                const res = await saveCanvasElements(cid, elements);
+                const res = await saveCanvasElements(cid, [...elements]);
                 if (!res.success) {
                     console.error("[Canvas] Failed to save elements:", res.error);
                     toast.error("Failed to auto-save canvas");
@@ -151,7 +196,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
     );
 
     // Excalidraw onChange fires on EVERY event
-    const handleCanvasChange = (elements: any[], appState: any) => {
+    const handleCanvasChange = (elements: readonly any[], appState: any) => {
         if (!isLoaded || !canvasId) return;
 
         // Propagate to parent if needed
@@ -159,9 +204,44 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             onChange([...elements], appState);
         }
 
-        // Only save if elements actually changed (we use Excalidraw's versioning)
-        // For simplicity in this "Enterprise" POC, we use debounced signature check
-        debouncedSave(canvasId, elements);
+        // Viewport tracking removed for performance (native Excalidraw links used instead)
+
+        // Handle Bi-directional selection sync
+        const selectedIds = Object.keys(appState.selectedElementIds || {});
+        if (selectedIds.length === 1 && selectedIds[0] !== lastSelectedIdRef.current) {
+            const selectedId = selectedIds[0];
+            lastSelectedIdRef.current = selectedId;
+
+            // Check if this ID has a binding
+            const binding = bindings.find(b => b.elementId === selectedId);
+            if (binding && binding.blockId) {
+                // Get element label/text for better UI feedback
+                const element = elements.find(el => el.id === selectedId);
+                const label = element?.text || binding.anchorText || "Linked Block";
+
+                // Use Zustand store to navigate to block
+                jumpToBlock(binding.blockId, label.substring(0, 20) + (label.length > 20 ? "..." : ""));
+                console.log("[Canvas] Jumping to block:", binding.blockId);
+            }
+        } else if (selectedIds.length === 0) {
+            lastSelectedIdRef.current = null;
+        }
+
+        // ============================================================================
+        // IMPORTANT: DO NOT modify elements in onChange callback!
+        // ============================================================================
+        // Modifying elements (e.g., adding links) during onChange can cause:
+        // 1. State inconsistencies between Excalidraw's internal state and our state
+        // 2. Fractional index invariant violations
+        // 3. Infinite re-render loops
+        //
+        // Link hydration should be done:
+        // - At initial load time (in getOrCreateCanvas)
+        // - Via updateScene API (not in onChange)
+        // ============================================================================
+
+        // Save the ORIGINAL elements as-is, preserving Excalidraw's ordering
+        debouncedSave(canvasId, [...elements]);
 
         // Save viewport
         debouncedViewportSave(canvasId, {
@@ -170,6 +250,12 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             zoom: appState.zoom.value
         });
     };
+
+    // --- Cognitive Visibility: Native Links (No Overlay) ---
+    // We rely on Excalidraw's native link rendering for maximum performance.
+    // The link 'jotion://block/...' serves as the indicator.
+
+    // Handle drag events
 
     // Handle drag events
     const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -267,7 +353,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             isDeleted: false,
             boundElements: [{ type: "text", id: textId }],
             updated: Date.now(),
-            link: null,
+            link: payload.blockId ? `jotion://block/${payload.blockId}` : null, // Native visibility
             locked: false,
         };
 
@@ -298,7 +384,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             isDeleted: false,
             boundElements: null,
             updated: Date.now(),
-            link: null,
+
             locked: false,
             text: wrappedText,
             fontSize,
@@ -308,9 +394,12 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             containerId: rectId,
             originalText: wrappedText,
             lineHeight: lineHeight,
+            link: payload.blockId ? `jotion://block/${payload.blockId}` : null, // Native visibility
         };
 
-        // Add elements to Excalidraw and automatically select them
+        // Add elements to Excalidraw
+        // Note: For newer Excalidraw, it's safer to let it handle indexing.
+        // We ensure rectangle comes before text in the array.
         const currentElements = excalidrawAPI.getSceneElements();
         excalidrawAPI.updateScene({
             elements: [...currentElements, rectangle, textElement],
@@ -318,10 +407,29 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
                 ...excalidrawAPI.getAppState(),
                 selectedElementIds: {
                     [rectId]: true,
-                    [textId]: true,
                 }
             }
         });
+
+        // 3. Create Binding in database
+        if (canvasId && payload.blockId) {
+            createCanvasBinding({
+                canvasId,
+                documentId,
+                elementId: rectId,
+                blockId: payload.blockId,
+                bindingType: "direct",
+                sourceType: payload.sourceType,
+                anchorText: payload.text,
+                metadata: payload.metadata
+            }).then(result => {
+                if (result.success && result.binding) {
+                    setBindings(prev => [...prev, result.binding]);
+                    window.dispatchEvent(new CustomEvent("refresh-bindings"));
+                    toast.success("Linked to document");
+                }
+            });
+        }
 
         console.log("[ExcalidrawCanvas] Created elements from drop:", { text: text.substring(0, 50) });
     }, [excalidrawAPI]);
@@ -372,7 +480,18 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
                     }
                 }}
                 onChange={handleCanvasChange}
+                onLinkOpen={(element, event) => {
+                    if (element.link && element.link.startsWith("jotion://block/")) {
+                        event.preventDefault();
+                        const blockId = element.link.replace("jotion://block/", "");
+
+                        // Use Zustand store to navigate to block
+                        jumpToBlock(blockId, 'text' in element ? (element as any).text : "Linked Block");
+                        console.log("[Canvas] Intercepted link click, jumping to block:", blockId);
+                    }
+                }}
             />
+
             {onToggleFullscreen && (
                 <ToolbarPortal isFullscreen={isFullscreen} onToggle={onToggleFullscreen} />
             )}

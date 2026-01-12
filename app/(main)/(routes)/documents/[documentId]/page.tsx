@@ -2,7 +2,7 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { getById, update } from "@/actions/documents";
+import { getById } from "@/actions/documents";
 import { Toolbar } from "@/components/toolbar";
 import { Cover } from "@/components/cover";
 import { Navbar } from "@/components/main/navbar";
@@ -10,9 +10,14 @@ import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { writeQueue } from "@/lib/write-queue";
-import { OptimisticLockError } from "@/lib/errors";
 import { SelectionToolbar } from "@/components/selection-toolbar";
 import { DocumentOutline } from "@/components/document-outline";
+import {
+  useLayoutStore,
+  useCanvasOpen,
+  useCanvasFullscreen,
+  useOutlineOpen
+} from "@/store/use-layout-store";
 
 export default function DocumentIdPage() {
   const { documentId } = useParams();
@@ -28,26 +33,13 @@ export default function DocumentIdPage() {
 
   const [document, setDocument] = useState<any>(undefined);
   const documentVersionRef = useRef<number>(0);
-  const [isCanvasOpen, setIsCanvasOpen] = useState(true);
-  const [isCanvasFullscreen, setIsCanvasFullscreen] = useState(false);
-  const [isOutlineOpen, setIsOutlineOpen] = useState(false);
   const [editorDocument, setEditorDocument] = useState<any>(null);
 
-  const toggleCanvas = useCallback(() => {
-    setIsCanvasOpen((prev) => !prev);
-    if (!isCanvasOpen && isCanvasFullscreen) {
-      // If enabling canvas while fullscreen was set, keep fullscreen? Or reset?
-      // Let's keep separate toggles.
-    }
-  }, []);
-
-  const toggleCanvasFullscreen = useCallback(() => {
-    setIsCanvasFullscreen((prev) => !prev);
-    // Ensure canvas is open if we go fullscreen
-    if (!isCanvasFullscreen) {
-      setIsCanvasOpen(true);
-    }
-  }, [isCanvasFullscreen]);
+  // Use Zustand store for layout state (no more useState + props drilling!)
+  const isCanvasOpen = useCanvasOpen();
+  const isCanvasFullscreen = useCanvasFullscreen();
+  const isOutlineOpen = useOutlineOpen();
+  const { toggleCanvas, toggleFullscreen, toggleOutline, openCanvas } = useLayoutStore();
 
   useEffect(() => {
     if (typeof documentId === "string") {
@@ -78,9 +70,6 @@ export default function DocumentIdPage() {
   const onChange = useCallback(async (content: string) => {
     if (typeof documentId === "string" && document?.userId) {
       try {
-        // Queue update with debouncing (1000ms for content)
-        // We no longer pass the version from the client to avoid sync issues during rapid typing.
-        // The server will handle optimistic locking using its latest known version.
         await writeQueue.queueUpdate({
           documentId,
           fieldName: "content",
@@ -126,7 +115,7 @@ export default function DocumentIdPage() {
             isCanvasOpen={isCanvasOpen}
             onToggleCanvas={toggleCanvas}
             isOutlineOpen={isOutlineOpen}
-            onToggleOutline={() => setIsOutlineOpen((prev) => !prev)}
+            onToggleOutline={toggleOutline}
           />
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar relative">
@@ -170,7 +159,7 @@ export default function DocumentIdPage() {
             <ExcalidrawCanvas
               documentId={documentId as string}
               isFullscreen={isCanvasFullscreen}
-              onToggleFullscreen={toggleCanvasFullscreen}
+              onToggleFullscreen={toggleFullscreen}
             />
           </div>
         </div>
@@ -179,7 +168,7 @@ export default function DocumentIdPage() {
       {/* Selection Toolbar - appears when text is selected */}
       <SelectionToolbar
         documentId={documentId as string}
-        onEnsureCanvas={() => setIsCanvasOpen(true)}
+        onEnsureCanvas={openCanvas}
       />
     </div >
   );

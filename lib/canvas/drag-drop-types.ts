@@ -21,6 +21,7 @@ export type DragSourceType =
   | "text"           // Plain text selection
   | "block"          // Entire block
   | "heading"        // Heading block
+  | "paragraph"      // Paragraph block
   | "list-item"      // List item
   | "code"           // Code block
   | "semantic-node"; // Semantic node
@@ -238,6 +239,14 @@ export const DEFAULT_STYLE_PRESETS: Record<DragSourceType, ElementStylePreset> =
     strokeColor: "#1976d2",
     fillStyle: "solid",
     strokeWidth: 2,
+    roughness: 0,
+  },
+  paragraph: {
+    name: "Paragraph",
+    backgroundColor: "#fff",
+    strokeColor: "#444",
+    fillStyle: "solid",
+    strokeWidth: 1,
     roughness: 0,
   },
   "list-item": {

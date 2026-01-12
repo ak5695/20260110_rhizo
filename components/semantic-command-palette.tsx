@@ -60,7 +60,7 @@ export const SemanticCommandPalette = ({
                                 onChange={(e) => setEditNameValue(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
-                                        onAction("rename", { nodeId: existingAnchor.nodeId, newTitle: editNameValue });
+                                        onAction("rename", { nodeId: existingAnchor.id, newTitle: editNameValue });
                                         setIsEditingName(false);
                                     }
                                 }}
@@ -101,7 +101,7 @@ export const SemanticCommandPalette = ({
                         <div className="flex gap-1 p-1">
                             <button
                                 onClick={() => {
-                                    onAction("rename", { nodeId: existingAnchor.nodeId, newTitle: editNameValue });
+                                    onAction("rename", { nodeId: existingAnchor.id, newTitle: editNameValue });
                                     setIsEditingName(false);
                                 }}
                                 className="flex-1 py-1.5 text-[10px] bg-primary text-primary-foreground rounded-lg font-bold"

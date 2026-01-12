@@ -127,21 +127,23 @@ export function useTextDrag({
       });
 
       // Set drag data
-      e.dataTransfer.setData(DRAG_MIME_TYPE, dragDropBridge.serializeDragPayload(payload));
-      e.dataTransfer.setData("text/plain", selectedText);
-      e.dataTransfer.effectAllowed = "copy";
+      if (e.dataTransfer) {
+        e.dataTransfer.setData(DRAG_MIME_TYPE, dragDropBridge.serializeDragPayload(payload));
+        e.dataTransfer.setData("text/plain", selectedText);
+        e.dataTransfer.effectAllowed = "copy";
 
-      // Create custom drag image
-      const dragImage = createDragPreview(selectedText, sourceType);
-      document.body.appendChild(dragImage);
-      e.dataTransfer.setDragImage(dragImage, 150, 30);
+        // Create custom drag image
+        const dragImage = createDragPreview(selectedText, sourceType);
+        document.body.appendChild(dragImage);
+        e.dataTransfer.setDragImage(dragImage, 150, 30);
 
-      // Clean up drag image after short delay
-      setTimeout(() => {
-        if (document.body.contains(dragImage)) {
-          document.body.removeChild(dragImage);
-        }
-      }, 0);
+        // Clean up drag image after short delay
+        setTimeout(() => {
+          if (document.body.contains(dragImage)) {
+            document.body.removeChild(dragImage);
+          }
+        }, 0);
+      }
 
       document.body.style.cursor = "grabbing";
 

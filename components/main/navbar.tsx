@@ -10,7 +10,8 @@ import useSWR from "swr";
 
 import { ChevronsLeft, ChevronsRight, MenuIcon, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useSidebarStore, useSidebarCollapsed } from "@/store/use-sidebar-store";
 
 interface NavbarProps {
   isCanvasOpen?: boolean;
@@ -21,31 +22,28 @@ interface NavbarProps {
 
 export const Navbar = ({ isCanvasOpen, onToggleCanvas, isOutlineOpen, onToggleOutline }: NavbarProps) => {
   const params = useParams();
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  // Use Zustand store for sidebar state (no more window events!)
+  const isCollapsed = useSidebarCollapsed();
+  const { expand } = useSidebarStore();
 
-    const handleSidebarChange = (event: any) => {
-      setIsCollapsed(event.detail.isCollapsed);
-    };
-
-    window.addEventListener("jotion-sidebar-change", handleSidebarChange);
-    return () => {
-      window.removeEventListener("jotion-sidebar-change", handleSidebarChange);
-    };
-  }, []);
-
-  const resetWidth = () => {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("jotion-reset-sidebar"));
-    }
-  };
-
-  const { data: document } = useSWR(
+  const { data: document, mutate } = useSWR(
     params.documentId ? ["document", params.documentId] : null,
-    ([, id]) => getById(id as string)
+    ([, id]) => getById(id as string),
+    {
+      revalidateOnFocus: true,
+    }
   );
+
+  // Listen for document changes to refresh the navbar title
+  useEffect(() => {
+    const handleDocumentsChanged = () => {
+      mutate(); // Revalidate the SWR cache immediately
+    };
+
+    window.addEventListener("documents-changed", handleDocumentsChanged);
+    return () => window.removeEventListener("documents-changed", handleDocumentsChanged);
+  }, [mutate]);
 
   if (document === undefined) {
     return (
@@ -66,7 +64,7 @@ export const Navbar = ({ isCanvasOpen, onToggleCanvas, isOutlineOpen, onToggleOu
         {isCollapsed && (
           <MenuIcon
             role="button"
-            onClick={resetWidth}
+            onClick={expand}
             className="h-6 w-6 text-muted-foreground cursor-pointer hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-sm"
           />
         )}

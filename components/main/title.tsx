@@ -1,11 +1,10 @@
 "use client";
 
-import React, { useRef, useState, useCallback } from "react";
-import { update } from "@/actions/documents";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { writeQueue } from "@/lib/write-queue";
+import { useDocumentStore, useDocumentTitle, useDocumentIcon } from "@/store/use-document-store";
 
 interface TitleProps {
   initialData: any;
@@ -13,16 +12,42 @@ interface TitleProps {
 
 export const Title = ({ initialData }: TitleProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const [title, setTitle] = useState(initialData.title || "Untitled");
   const [isEditing, setIsEditing] = useState(false);
 
+  // Use Zustand store for real-time sync
+  const { setDocument, updateTitle } = useDocumentStore();
+  const storeTitle = useDocumentTitle(initialData.id);
+  const storeIcon = useDocumentIcon(initialData.id);
+
+  // Initialize store with initial data (only runs once per document)
+  useEffect(() => {
+    setDocument({
+      id: initialData.id,
+      title: initialData.title,
+      icon: initialData.icon,
+      version: initialData.version,
+      userId: initialData.userId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData.id]); // Only re-init when document ID changes
+
+  // Use store value or fallback to initialData
+  // Check if title is placeholder
+  const rawTitle = storeTitle ?? initialData.title;
+  const isPlaceholder = !rawTitle || rawTitle === "Untitled";
+  const displayTitle = isPlaceholder ? "Untitled" : rawTitle;
+  const icon = storeIcon !== undefined ? storeIcon : initialData.icon;
+
   const enableInput = () => {
-    setTitle(initialData.title);
     setIsEditing(true);
     setTimeout(() => {
       inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(0, inputRef.current.value.length);
+      // If placeholder, select all for easy replacement
+      if (isPlaceholder) {
+        inputRef.current?.select();
+      } else {
+        inputRef.current?.setSelectionRange(0, inputRef.current.value.length);
+      }
     }, 0);
   };
 
@@ -30,31 +55,21 @@ export const Title = ({ initialData }: TitleProps) => {
     setIsEditing(false);
   };
 
-  // Enterprise-grade onChange with write queue and debouncing
+  // Real-time title update via Zustand store
   const onChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const newTitle = event.target.value || "Untitled";
-    setTitle(newTitle);
-
-    // Queue update with debouncing (500ms for title)
-    writeQueue.queueUpdate({
-      documentId: initialData.id,
-      fieldName: "title",
-      updates: { title: newTitle },
-      version: initialData.version,
-      userId: initialData.userId,
-    }).catch((error) => {
-      console.error("[Title] Failed to update title:", error);
-      // Write queue will handle retries automatically
-    });
-  }, [initialData.id, initialData.version, initialData.userId]);
+    const newTitle = event.target.value;
+    updateTitle(initialData.id, newTitle);
+  }, [initialData.id, updateTitle]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") disableInput();
+    if (event.key === "Enter") {
+      disableInput();
+    }
   };
 
   return (
     <div className="flex items-center gap-x-1">
-      {!!initialData.icon && <p>{initialData.icon}</p>}
+      {!!icon && <p>{icon}</p>}
       {isEditing ? (
         <Input
           ref={inputRef}
@@ -62,8 +77,9 @@ export const Title = ({ initialData }: TitleProps) => {
           onBlur={disableInput}
           onChange={onChange}
           onKeyDown={onKeyDown}
-          value={title}
-          className="h-7 px-2 focus-visible:ring-transparent"
+          value={isPlaceholder ? "" : rawTitle}
+          placeholder="Untitled"
+          className="h-7 px-2 focus-visible:ring-transparent placeholder:text-muted-foreground/50"
         />
       ) : (
         <Button
@@ -72,7 +88,9 @@ export const Title = ({ initialData }: TitleProps) => {
           size="sm"
           className="font-normal h-auto p-1"
         >
-          <span className="truncate">{initialData?.title}</span>
+          <span className={isPlaceholder ? "truncate text-muted-foreground" : "truncate"}>
+            {displayTitle}
+          </span>
         </Button>
       )}
     </div>

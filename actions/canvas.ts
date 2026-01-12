@@ -47,10 +47,69 @@ export async function getOrCreateCanvas(documentId: string) {
           )
         );
 
+      // ============================================================================
+      // ENTERPRISE-GRADE ELEMENT ORDERING FIX
+      // ============================================================================
+      // Excalidraw has a strict invariant: for bound elements, the CONTAINER must
+      // appear BEFORE its CONTENT in the array. Violating this causes:
+      // "Fractional indices invariant for bound elements has been compromised"
+      //
+      // Our fix:
+      // 1. Strip fractionalIndex from all elements (forces Excalidraw to regenerate)
+      // 2. Topologically sort elements to ensure containers precede content
+      // ============================================================================
+
+      // Step 1: Extract raw data and strip fractionalIndex
+      const rawElements = elements.map((el) => {
+        const data = el.data;
+        if (data && typeof data === 'object') {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { fractionalIndex, index, ...rest } = data as any;
+          return rest;
+        }
+        return data;
+      });
+
+      // Step 2: Build dependency graph for bound elements
+      // A text element with containerId depends on its container
+      const elementById = new Map<string, any>();
+      const dependsOn = new Map<string, string>(); // childId -> containerId
+
+      for (const el of rawElements) {
+        if (el && el.id) {
+          elementById.set(el.id, el);
+          if (el.containerId) {
+            dependsOn.set(el.id, el.containerId);
+          }
+        }
+      }
+
+      // Step 3: Topological sort - containers before content
+      const sorted: any[] = [];
+      const visited = new Set<string>();
+
+      const visit = (el: any) => {
+        if (!el || !el.id || visited.has(el.id)) return;
+
+        // If this element depends on a container, visit container first
+        const containerId = dependsOn.get(el.id);
+        if (containerId && elementById.has(containerId)) {
+          visit(elementById.get(containerId));
+        }
+
+        visited.add(el.id);
+        sorted.push(el);
+      };
+
+      // Visit all elements, respecting dependencies
+      for (const el of rawElements) {
+        visit(el);
+      }
+
       return {
         success: true,
         canvas: existing[0],
-        elements: elements.map((el) => el.data),
+        elements: sorted,
       };
     }
 
@@ -167,23 +226,14 @@ export async function saveCanvasElements(
       return { success: false, error: "Canvas not found", errorType: "not_found" };
     }
 
-    // NOTE: neon-http driver doesn't support transactions
-    // For transaction support, switch to @neondatabase/serverless with ws adapter
-    // See CANVAS_ENTERPRISE_IMPROVEMENTS.md for upgrade guide
-
-    // STABLE SOLUTION: Manual upsert with separate INSERT and UPDATE
-    // More verbose but guaranteed to work with neon-http driver
-
     let insertedCount = 0;
     let updatedCount = 0;
 
-    // Get existing element IDs to determine what needs INSERT vs UPDATE
+    // Get existing element IDs
     const elementIds = elements.map(el => el.id);
-
     let existingIds = new Set<string>();
 
     if (elementIds.length > 0) {
-      // Handle single element case separately to avoid inArray issues
       if (elementIds.length === 1) {
         const existing = await db
           .select({ id: canvasElements.id })
@@ -205,41 +255,38 @@ export async function saveCanvasElements(
       }
     }
 
-    // Separate elements into INSERT and UPDATE batches
     const toInsert = elements.filter(el => !existingIds.has(el.id));
     const toUpdate = elements.filter(el => existingIds.has(el.id));
 
-    // Batch INSERT new elements
     if (toInsert.length > 0) {
-      const CHUNK_SIZE = 50; // Conservative chunk size
-
+      const CHUNK_SIZE = 50;
       for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
         const chunk = toInsert.slice(i, i + CHUNK_SIZE);
-        const values = chunk.map((el) => ({
-          id: el.id,
-          canvasId,
-          type: el.type,
-          x: el.x,
-          y: el.y,
-          width: el.width,
-          height: el.height,
-          angle: el.angle || 0,
-          data: el,
-          zIndex: el.version || 0,
-          version: el.version || 1,
-          isDeleted: el.isDeleted || false,
-        }));
-
+        const values = chunk.map((el) => {
+          const originalIndex = elements.findIndex(item => item.id === el.id);
+          return {
+            id: el.id,
+            canvasId,
+            type: el.type,
+            x: el.x,
+            y: el.y,
+            width: el.width,
+            height: el.height,
+            angle: el.angle || 0,
+            data: el,
+            zIndex: originalIndex >= 0 ? originalIndex : 0,
+            version: el.version || 1,
+            isDeleted: el.isDeleted || false,
+          };
+        });
         await db.insert(canvasElements).values(values);
         insertedCount += chunk.length;
       }
     }
 
-    // Batch UPDATE existing elements
     if (toUpdate.length > 0) {
-      // For updates, we do them individually to avoid complex batch UPDATE syntax
-      // This is acceptable because updates are typically fewer than inserts
       for (const el of toUpdate) {
+        const originalIndex = elements.findIndex(item => item.id === el.id);
         await db.update(canvasElements)
           .set({
             type: el.type,
@@ -249,12 +296,11 @@ export async function saveCanvasElements(
             height: el.height,
             angle: el.angle || 0,
             data: el,
-            zIndex: el.version || 0,
+            zIndex: originalIndex >= 0 ? originalIndex : 0,
             version: el.version || 1,
             isDeleted: el.isDeleted || false,
           })
           .where(eq(canvasElements.id, el.id));
-
         updatedCount++;
       }
     }
@@ -269,8 +315,7 @@ export async function saveCanvasElements(
       .where(eq(canvases.id, canvasId));
 
     const duration = Date.now() - startTime;
-
-    console.log(`[saveCanvasElements] Saved ${elements.length} elements in ${duration}ms (${insertedCount} inserted, ${updatedCount} updated)`);
+    console.log(`[saveCanvasElements] Saved ${elements.length} elements in ${duration}ms`);
 
     return {
       success: true,
@@ -279,29 +324,16 @@ export async function saveCanvasElements(
       updatedCount,
       duration,
     };
-
   } catch (error) {
     const duration = Date.now() - startTime;
-
     console.error("[saveCanvasElements] Error:", error);
-
-    // Classify error type for better client handling
     let errorType = "unknown";
     let errorMessage = "Failed to save elements";
 
     if (error instanceof Error) {
       errorMessage = error.message;
-
-      // Database constraint violations
-      if (errorMessage.includes("duplicate key") || errorMessage.includes("unique constraint")) {
-        errorType = "conflict";
-      } else if (errorMessage.includes("foreign key")) {
-        errorType = "invalid_reference";
-      } else if (errorMessage.includes("deadlock")) {
-        errorType = "deadlock";
-      } else if (errorMessage.includes("timeout")) {
-        errorType = "timeout";
-      }
+      if (errorMessage.includes("duplicate key")) errorType = "conflict";
+      else if (errorMessage.includes("foreign key")) errorType = "invalid_reference";
     }
 
     return {

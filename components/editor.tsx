@@ -29,7 +29,9 @@ import {
 } from "@/actions/anchors";
 import { create as serverCreateDocument } from "@/actions/documents";
 import { useSemanticSync } from "@/store/use-semantic-sync";
+import { useNavigationStore, useBlockTarget } from "@/store/use-navigation-store";
 import { AiChatModal } from "./ai-chat-modal";
+import { getCanvasBindings } from "@/actions/canvas-bindings";
 
 // Dynamic import for Excalidraw
 const Excalidraw = dynamic(
@@ -322,6 +324,7 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
   const { activeNodeId, setActiveNode } = useSemanticSync();
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiModalPosition, setAiModalPosition] = useState({ top: 0, left: 0 });
+  const [bindings, setBindings] = useState<any[]>([]);
   const router = useRouter();
 
   // Store cursor block ID for restoration after AI modal closes
@@ -463,6 +466,209 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
       });
     }
   }, [editor, setActiveNode]);
+
+  // 3. Fetch Canvas Bindings
+  useEffect(() => {
+    const fetchBindings = async () => {
+      // First find the canvas for this document
+      // In a real app, we'd have a more direct way, but we can query by documentId
+      // However, getCanvasBindings needs canvasId. 
+      // We can use the same server action getOrCreateCanvas if we want, or add a dedicated one.
+      // For now, let's assume we can fetch by documentId if we had the right action.
+      // Let's use getCanvasBindings which we have, but we need to find canvasId first.
+      try {
+        const { getOrCreateCanvas } = await import("@/actions/canvas");
+        const res = await getOrCreateCanvas(documentId);
+        if (res.success && res.canvas) {
+          const bRes = await getCanvasBindings(res.canvas.id);
+          if (bRes.success) {
+            setBindings(bRes.bindings || []);
+          }
+        }
+      } catch (err) {
+        console.error("[Editor] Failed to fetch bindings:", err);
+      }
+    };
+    fetchBindings();
+
+    // Refresh bindings periodically or on specific events
+    const handleRefresh = () => fetchBindings();
+    window.addEventListener("refresh-bindings", handleRefresh);
+    return () => window.removeEventListener("refresh-bindings", handleRefresh);
+  }, [documentId]);
+
+  // Use Zustand navigation store
+  const blockTarget = useBlockTarget();
+  const { clearBlockTarget, jumpToElement } = useNavigationStore();
+
+  // 4. Handle Jump-to-Block from Canvas (via Zustand store)
+  useEffect(() => {
+    if (!blockTarget || !editor) return;
+
+    const { id: blockId, label } = blockTarget;
+
+    // 1. Clear previous active states
+    document.querySelectorAll(".is-active-link").forEach(el => {
+      el.classList.remove("is-active-link");
+    });
+
+    const element = document.querySelector(`[data-id="${blockId}"]`) as HTMLElement;
+    if (element) {
+      // 2. Scroll and apply persistent highlight
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      element.classList.add("is-active-link");
+
+      // 3. Ensure binding tag exists and update label
+      let tag = element.querySelector(".binding-tag") as HTMLElement;
+      if (!tag) {
+        tag = document.createElement("div");
+        tag.className = "binding-tag";
+        element.appendChild(tag);
+      }
+      tag.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> 绑定: ${label || "画布节点"}`;
+    }
+
+    // Clear the target after navigation
+    clearBlockTarget();
+  }, [blockTarget, editor, clearBlockTarget]);
+
+  // Handle clearing active link state when clicking editor
+  useEffect(() => {
+    const clearActive = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".is-active-link")) {
+        document.querySelectorAll(".is-active-link").forEach(el => {
+          el.classList.remove("is-active-link");
+        });
+      }
+    };
+    document.addEventListener("mousedown", clearActive);
+    return () => document.removeEventListener("mousedown", clearActive);
+  }, []);
+
+  // 5. Block Decoration Logic (Surgical Updates - Enterprise Grade)
+  const decorateBlocks = useCallback(() => {
+    if (!bindings.length) return;
+
+    // A: Clear stale indicators (blocks that are no longer in the bindings list)
+    const activeBlockIds = new Set(bindings.map(b => b.blockId));
+    document.querySelectorAll(".is-linked").forEach(el => {
+      const id = el.getAttribute("data-id");
+      if (!id || !activeBlockIds.has(id)) {
+        el.classList.remove("is-linked");
+        el.querySelector(".link-indicator")?.remove();
+      }
+    });
+
+    // B: Surgical Injection (Add only what's missing)
+    bindings.forEach(binding => {
+      if (!binding.blockId) return;
+      const element = document.querySelector(`[data-id="${binding.blockId}"]`);
+
+      if (element) {
+        element.classList.add("is-linked");
+
+        // Add a small indicator if doesn't exist
+        const existingIndicator = element.querySelector(`.link-indicator[data-target="${binding.elementId}"]`);
+
+        if (!existingIndicator) {
+          const indicator = document.createElement("div");
+          indicator.className = "link-indicator absolute -left-8 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-orange-500/60 hover:text-orange-500 hover:bg-orange-500/10 rounded-full cursor-pointer transition-all z-20 group/indicator";
+          indicator.setAttribute("data-target", binding.elementId);
+          indicator.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link-2 group-hover/indicator:rotate-12 transition-transform"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>`;
+          indicator.title = "View on Canvas";
+
+          indicator.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Use Zustand store to navigate to canvas element
+            jumpToElement(binding.elementId);
+          };
+
+          if ((element as HTMLElement).style.position !== "relative") {
+            (element as HTMLElement).style.position = "relative";
+          }
+          element.appendChild(indicator);
+        }
+
+        // Add Binding Tag (Cognitive Visibility)
+        if (!element.querySelector(".binding-tag")) {
+          const tag = document.createElement("div");
+          tag.className = "binding-tag";
+          element.appendChild(tag);
+        }
+
+        // Add Status Badge (Arbitration Status Visibility)
+        const status = binding.metadata?.status || "pending";
+        let statusBadge = element.querySelector(".status-badge") as HTMLElement;
+        if (!statusBadge) {
+          statusBadge = document.createElement("span");
+          element.appendChild(statusBadge);
+        }
+        statusBadge.className = `status-badge status-${status}`;
+        statusBadge.innerHTML = status === "pending" ? "⚖️ 待裁决" : status === "confirmed" ? "✅ 已确认" : "❌ 已拒绝";
+      }
+    });
+  }, [bindings]);
+
+  useEffect(() => {
+    if (!editor || !bindings.length) return;
+
+    // Initial run
+    const initialTimer = setTimeout(decorateBlocks, 500);
+
+    // Debounced observer to avoid mutation cycles
+    let debounceTimer: NodeJS.Timeout;
+
+    const editorElement = document.querySelector(".bn-container");
+    if (!editorElement) return () => clearTimeout(initialTimer);
+
+    const observer = new MutationObserver((mutations) => {
+      // Optimization: Filter out mutations that we ourselves caused
+      const isSelfMutation = mutations.every(m =>
+        (m.target as HTMLElement).classList?.contains('link-indicator') ||
+        (m.target as HTMLElement).classList?.contains('is-linked') ||
+        Array.from(m.addedNodes).some(n => (n as HTMLElement).classList?.contains('link-indicator'))
+      );
+
+      if (isSelfMutation) return;
+
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        decorateBlocks();
+      }, 300); // 300ms debounce
+    });
+
+    observer.observe(editorElement, {
+      childList: true,
+      subtree: true,
+      attributes: false,
+      characterData: true
+    });
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearTimeout(debounceTimer);
+      observer.disconnect();
+    };
+  }, [bindings, editor, decorateBlocks]);
+
+  // 6. Global delegated click listener for linked blocks
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest(".is-linked");
+      if (target) {
+        const blockId = target.getAttribute("data-id");
+        const binding = bindings.find(b => b.blockId === blockId);
+        if (binding) {
+          // If Alt is pressed or just click (decide UX later)
+          // For now, let's say clicking the indicator (handled above) is enough,
+          // OR we can make the block responsive.
+        }
+      }
+    };
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [bindings]);
 
   // 当图中点击节点时，同步编辑器高亮/跳转
   useEffect(() => {

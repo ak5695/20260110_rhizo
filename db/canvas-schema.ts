@@ -103,7 +103,7 @@ export const canvasElements = pgTable("canvas_elements", {
  * Compound Nodes - Groups of elements that move together
  * Hierarchical structure supporting nested compounds
  */
-export const compoundNodes = pgTable("compound_nodes", {
+export const compoundNodes: any = pgTable("compound_nodes", {
     id: uuid("id").defaultRandom().primaryKey(),
     canvasId: uuid("canvas_id").notNull().references(() => canvases.id, { onDelete: 'cascade' }),
 

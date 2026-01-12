@@ -89,3 +89,129 @@ body,
 .dark .bn-block-outer[data-content-type="codeBlock"] .cm-editor {
   background-color: #1E1E1E !important;
 }
+/* Canvas Binding Styles */
+.is-linked {
+  position: relative !important;
+  border-left: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.is-linked:hover {
+  border-left-color: rgba(249, 115, 22, 0.4);
+  background-color: rgba(249, 115, 22, 0.03);
+}
+
+.dark .is-linked:hover {
+  background-color: rgba(249, 115, 22, 0.05);
+}
+
+.link-indicator {
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.link-indicator:hover {
+  transform: translateY(-50%) scale(1.2);
+  color: #f97316;
+}
+
+/* --- 图文联动：认知可用性改造 (Cognitive State Visibility) --- */
+
+/* 1. 文档侧：持续态高亮与标识 */
+.is-active-link {
+  background-color: rgba(249, 115, 22, 0.08) !important;
+  border-left: 4px solid #f97316 !important;
+  border-radius: 0 4px 4px 0;
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  box-shadow: -4px 0 12px rgba(249, 115, 22, 0.1);
+}
+
+.dark .is-active-link {
+  background-color: rgba(249, 115, 22, 0.12) !important;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.2);
+}
+
+/* 2. 绑定提示标签 (Persistent Tag) */
+.binding-tag {
+  position: absolute;
+  right: 0;
+  top: -20px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  background: #f97316;
+  color: white;
+  border-radius: 4px 4px 0 0;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: all 0.3s ease;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.is-active-link .binding-tag {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 3. 文档块：常驻逻辑标识 (🔗) */
+.link-indicator {
+  transition: all 0.2s ease-out;
+  border: 1px solid transparent;
+}
+
+.link-indicator:hover {
+  background: white;
+  border-color: #f97316;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.2);
+  transform: translateY(-50%) scale(1.1);
+  color: #f97316;
+}
+
+.dark .link-indicator:hover {
+  background: #2D2D35;
+}
+
+/* 4. 裁决状态标识 (Status Indicators) */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+.status-pending { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
+.status-approved { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+.status-rejected { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+
+/* 5. 画布覆盖层样式 (Canvas Overlays) */
+.canvas-element-badge {
+  position: absolute;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-blur: 4px;
+  border: 1px solid #f97316;
+  color: #f97316;
+  font-size: 9px;
+  font-weight: 800;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  transform: translate(-50%, -100%);
+}
+
+.dark .canvas-element-badge {
+  background: rgba(30, 30, 40, 0.9);
+  border-color: #f97316;
+}
+

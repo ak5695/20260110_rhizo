@@ -107,20 +107,24 @@ export const EditorDragHandler: React.FC<EditorDragHandlerProps> = ({
         },
       });
 
-      // Set drag data
-      e.dataTransfer.setData(DRAG_MIME_TYPE, dragDropBridge.serializeDragPayload(payload));
-      e.dataTransfer.setData("text/plain", selectedText);
-      e.dataTransfer.effectAllowed = "copy";
+      // Set drag data and image
+      if (e.dataTransfer) {
+        e.dataTransfer.setData(DRAG_MIME_TYPE, dragDropBridge.serializeDragPayload(payload));
+        e.dataTransfer.setData("text/plain", selectedText);
+        e.dataTransfer.effectAllowed = "copy";
 
-      // Create custom drag image
-      const dragImage = createDragImage(selectedText, sourceType);
-      document.body.appendChild(dragImage);
-      e.dataTransfer.setDragImage(dragImage, 0, 0);
+        // Create custom drag image
+        const dragImage = createDragImage(selectedText, sourceType);
+        document.body.appendChild(dragImage);
+        e.dataTransfer.setDragImage(dragImage, 0, 0);
 
-      // Remove drag image after a short delay
-      setTimeout(() => {
-        document.body.removeChild(dragImage);
-      }, 0);
+        // Remove drag image after a short delay
+        setTimeout(() => {
+          if (document.body.contains(dragImage)) {
+            document.body.removeChild(dragImage);
+          }
+        }, 0);
+      }
 
       console.log("[EditorDragHandler] Drag started:", { selectedText, blockId, sourceType });
     };

@@ -54,7 +54,7 @@ class WriteQueueManager {
 
   // Configuration
   private readonly DEBOUNCE_DELAY = {
-    title: 500,      // 500ms for title changes
+    title: 300,      // 300ms for title changes (fast user feedback)
     content: 1000,   // 1s for content changes
     icon: 0,         // Immediate for icon/image changes
     coverImage: 0,   // Immediate for cover image
@@ -276,6 +276,11 @@ class WriteQueueManager {
     const latestPending = this.pendingWrites.get(documentId);
     if (latestPending && updatedDoc) {
       latestPending.version = updatedDoc.version;
+    }
+
+    // Dispatch event to refresh document list in sidebar (for title/icon updates)
+    if (typeof window !== "undefined" && (updates.title || updates.icon)) {
+      window.dispatchEvent(new CustomEvent("documents-changed"));
     }
   }
 

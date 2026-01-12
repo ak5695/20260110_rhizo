@@ -1,14 +1,16 @@
 "use client";
 
-import React, { ElementRef, useRef, useState, useCallback } from "react";
-import { update, removeIcon } from "@/actions/documents";
+import React, { ElementRef, useRef, useState, useCallback, useEffect } from "react";
 import { IconPicker } from "@/components/icon-picker";
 import { Button } from "@/components/ui/button";
 import { ImageIcon, Smile, X } from "lucide-react";
 import TextareaAutosize from "react-textarea-autosize";
 import { useCoverImage } from "@/hooks/use-cover-image";
-import { writeQueue } from "@/lib/write-queue";
+import { useDocumentStore, useDocumentTitle, useDocumentIcon } from "@/store/use-document-store";
 import { cn } from "@/lib/utils";
+
+// Default placeholder text for new pages
+const PLACEHOLDER_TITLE = "Untitled";
 
 interface ToolbarProps {
   initialData: any; // Type adaptation
@@ -18,37 +20,54 @@ interface ToolbarProps {
 export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
   const inputRef = useRef<ElementRef<"textarea">>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [value, setValue] = useState(initialData.title);
+
+  // Use Zustand store for real-time sync
+  const { setDocument, updateTitle, updateIcon } = useDocumentStore();
+  const storeTitle = useDocumentTitle(initialData.id);
+  const storeIcon = useDocumentIcon(initialData.id);
+
+  // Initialize store with initial data (only runs once per document)
+  useEffect(() => {
+    setDocument({
+      id: initialData.id,
+      title: initialData.title,
+      icon: initialData.icon,
+      version: initialData.version,
+      userId: initialData.userId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData.id]); // Only re-init when document ID changes
+
+  // Use store value or fallback to initialData
+  const rawTitle = storeTitle ?? initialData.title;
+  const icon = storeIcon !== undefined ? storeIcon : initialData.icon;
+
+  // Check if title is placeholder (empty, "Untitled", or undefined)
+  const isPlaceholder = !rawTitle || rawTitle === PLACEHOLDER_TITLE;
+  const displayTitle = isPlaceholder ? PLACEHOLDER_TITLE : rawTitle;
 
   const coverImage = useCoverImage();
 
   const enableInput = () => {
     if (preview) return;
-
     setIsEditing(true);
     setTimeout(() => {
-      setValue(initialData.title);
-      inputRef.current?.focus();
+      if (inputRef.current) {
+        inputRef.current.focus();
+        // If it's a placeholder, select all text for easy replacement
+        if (isPlaceholder) {
+          inputRef.current.select();
+        }
+      }
     }, 0);
   };
 
   const disableInput = () => setIsEditing(false);
 
-  // Enterprise-grade onInput with write queue
-  const onInput = useCallback((value: string) => {
-    setValue(value);
-
-    // Queue title update with debouncing (500ms)
-    writeQueue.queueUpdate({
-      documentId: initialData.id,
-      fieldName: "title",
-      updates: { title: value || "Untitled" },
-      version: initialData.version,
-      userId: initialData.userId,
-    }).catch((error) => {
-      console.error("[Toolbar] Failed to update title:", error);
-    });
-  }, [initialData.id, initialData.version, initialData.userId]);
+  // Real-time title update via Zustand store
+  const onInput = useCallback((newTitle: string) => {
+    updateTitle(initialData.id, newTitle);
+  }, [initialData.id, updateTitle]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter") {
@@ -57,41 +76,25 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
     }
   };
 
-  // Icon changes are immediate (no debounce)
-  const onIconSelect = useCallback((icon: string) => {
-    writeQueue.queueUpdate({
-      documentId: initialData.id,
-      fieldName: "icon",
-      updates: { icon },
-      version: initialData.version,
-      userId: initialData.userId,
-    }).catch((error) => {
-      console.error("[Toolbar] Failed to update icon:", error);
-    });
-  }, [initialData.id, initialData.version, initialData.userId]);
+  // Icon changes via Zustand store
+  const onIconSelect = useCallback((newIcon: string) => {
+    updateIcon(initialData.id, newIcon);
+  }, [initialData.id, updateIcon]);
 
   const onRemoveIcon = useCallback(() => {
-    writeQueue.queueUpdate({
-      documentId: initialData.id,
-      fieldName: "icon",
-      updates: { icon: null as any },
-      version: initialData.version,
-      userId: initialData.userId,
-    }).catch((error) => {
-      console.error("[Toolbar] Failed to remove icon:", error);
-    });
-  }, [initialData.id, initialData.version, initialData.userId]);
+    updateIcon(initialData.id, null);
+  }, [initialData.id, updateIcon]);
 
   return (
     <div className="pl-[54px] group relative">
-      {!!initialData.icon && !preview && (
+      {!!icon && !preview && (
         <div className={cn(
           "flex items-center gap-x-2 group/icon pt-6",
           !!initialData.coverImage && "-mt-8 pt-0"
         )}>
           <IconPicker onChange={onIconSelect}>
             <p className="text-5xl hover:opacity-75 transition">
-              {initialData.icon}
+              {icon}
             </p>
           </IconPicker>
           <Button
@@ -105,17 +108,17 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
         </div>
       )}
 
-      {!!initialData.icon && preview && (
+      {!!icon && preview && (
         <p className={cn(
           "text-5xl pt-4",
           !!initialData.coverImage && "-mt-8 pt-0"
         )}>
-          {initialData.icon}
+          {icon}
         </p>
       )}
 
       <div className="opacity-0 group-hover:opacity-100 flex items-center gap-x-1 py-1">
-        {!initialData.icon && !preview && (
+        {!icon && !preview && (
           <IconPicker asChild onChange={onIconSelect}>
             <Button
               className="text-muted-foreground text-xs"
@@ -143,16 +146,22 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
           ref={inputRef}
           onBlur={disableInput}
           onKeyDown={onKeyDown}
-          value={value}
+          value={isPlaceholder ? "" : rawTitle}
+          placeholder={PLACEHOLDER_TITLE}
           onChange={(e) => onInput(e.target.value)}
-          className="text-4xl bg-transparent font-bold break-words outline-none text-[#3F3F3F] dark:text-[#CFCFCF] resize-none"
+          className="text-4xl bg-transparent font-bold break-words outline-none text-[#3F3F3F] dark:text-[#CFCFCF] resize-none w-full placeholder:text-[#9B9B9B] dark:placeholder:text-[#5C5C5C]"
         />
       ) : (
         <div
           onClick={enableInput}
-          className="pb-2 text-4xl font-bold break-words outline-none text-[#3F3F3F] dark:text-[#CFCFCF]"
+          className={cn(
+            "pb-2 text-4xl font-bold break-words outline-none cursor-text",
+            isPlaceholder
+              ? "text-[#9B9B9B] dark:text-[#5C5C5C]"
+              : "text-[#3F3F3F] dark:text-[#CFCFCF]"
+          )}
         >
-          {initialData.title}
+          {displayTitle}
         </div>
       )}
     </div>

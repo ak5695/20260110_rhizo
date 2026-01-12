@@ -15,7 +15,7 @@ export const SemanticGraphPanel = ({ documentId }: SemanticGraphPanelProps) => {
     const { resolvedTheme } = useTheme();
     const isDark = resolvedTheme === "dark";
 
-    const fgRef = useRef<ForceGraphMethods>();
+    const fgRef = useRef<ForceGraphMethods | undefined>(undefined);
     const [data, setData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
     const [isLoading, setIsLoading] = useState(true);
 
