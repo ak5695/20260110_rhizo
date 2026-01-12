@@ -4,6 +4,7 @@ import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2 } from "lucide-react";
 import { useDocumentStore, useDocumentTitle, useDocumentIcon } from "@/store/use-document-store";
 
 interface TitleProps {
@@ -14,10 +15,23 @@ export const Title = ({ initialData }: TitleProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(false);
 
+  const [saveStatus, setSaveStatus] = useState<"idle" | "pending" | "saving">("idle");
+
   // Use Zustand store for real-time sync
   const { setDocument, updateTitle } = useDocumentStore();
   const storeTitle = useDocumentTitle(initialData.id);
   const storeIcon = useDocumentIcon(initialData.id);
+
+  // Listen for write queue status updates
+  useEffect(() => {
+    const handleStatus = (e: any) => {
+      if (e.detail?.documentId === initialData.id) {
+        setSaveStatus(e.detail.status);
+      }
+    };
+    window.addEventListener("write-queue-status", handleStatus as EventListener);
+    return () => window.removeEventListener("write-queue-status", handleStatus as EventListener);
+  }, [initialData.id]);
 
   // Initialize store with initial data (only runs once per document)
   useEffect(() => {
@@ -82,16 +96,27 @@ export const Title = ({ initialData }: TitleProps) => {
           className="h-7 px-2 focus-visible:ring-transparent placeholder:text-muted-foreground/50"
         />
       ) : (
-        <Button
-          onClick={enableInput}
-          variant="ghost"
-          size="sm"
-          className="font-normal h-auto p-1"
-        >
-          <span className={isPlaceholder ? "truncate text-muted-foreground" : "truncate"}>
-            {displayTitle}
-          </span>
-        </Button>
+        <div className="flex items-center">
+          <Button
+            onClick={enableInput}
+            variant="ghost"
+            size="sm"
+            className="font-normal h-auto p-1"
+          >
+            <span className={isPlaceholder ? "truncate text-muted-foreground" : "truncate"}>
+              {displayTitle}
+            </span>
+          </Button>
+          {saveStatus !== "idle" && (
+            <div className="ml-1 flex items-center justify-center">
+              {saveStatus === "saving" ? (
+                <Loader2 className="h-3 w-3 animate-spin text-orange-500" />
+              ) : (
+                <div className="h-1.5 w-1.5 rounded-full bg-orange-400 animate-pulse" />
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

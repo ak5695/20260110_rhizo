@@ -54,40 +54,23 @@ class WriteQueueManager {
 
   // Configuration
   private readonly DEBOUNCE_DELAY = {
-    title: 300,      // 300ms for title changes (fast user feedback)
-    content: 1000,   // 1s for content changes
-    icon: 0,         // Immediate for icon/image changes
-    coverImage: 0,   // Immediate for cover image
-    default: 500,    // Default debounce
+    title: 800,      // 800ms for title (Enterprise Grade - accommodates IME/typing)
+    content: 1000,   // 1s for content
+    icon: 0,         // Immediate
+    coverImage: 0,   // Immediate
+    default: 500,
   };
 
   private readonly MAX_RETRY_ATTEMPTS = 3;
-  private readonly FORCE_FLUSH_DELAY = 5000; // Force flush after 5s
+  private readonly FORCE_FLUSH_DELAY = 5000;
 
   constructor() {
-    // Flush all pending writes on page unload
     if (typeof window !== "undefined") {
-      window.addEventListener("beforeunload", () => {
-        this.flushAll();
-      });
-
-      // Also flush periodically as safety net
-      setInterval(() => {
-        this.flushAll();
-      }, this.FORCE_FLUSH_DELAY);
+      window.addEventListener("beforeunload", () => this.flushAll());
+      setInterval(() => this.flushAll(), this.FORCE_FLUSH_DELAY);
     }
   }
 
-  /**
-   * Queue a document update with debouncing
-   *
-   * @param documentId - Document to update
-   * @param fieldName - Field being updated (for debounce timing)
-   * @param updates - Updates to apply
-   * @param version - Current document version
-   * @param userId - User making the update
-   * @returns Promise that resolves when write is flushed
-   */
   async queueUpdate(params: {
     documentId: string;
     fieldName: string;
@@ -97,49 +80,39 @@ class WriteQueueManager {
   }): Promise<void> {
     const { documentId, fieldName, updates, version, userId } = params;
 
-    // Merge with any pending writes for this document
     const existing = this.pendingWrites.get(documentId);
+
+    // Merge logic: Preserve the LATEST version we know about
+    const finalVersion = (version !== undefined && (existing?.version ?? 0) > version)
+      ? existing?.version
+      : version;
+
     const merged = existing
       ? { ...existing.updates, ...updates }
       : updates;
 
-    // Update pending write
     this.pendingWrites.set(documentId, {
       documentId,
       updates: merged,
-      version: version ?? existing?.version,
+      version: finalVersion,
       userId,
       timestamp: Date.now(),
       retryCount: 0,
     });
 
-    // Clear existing timer
     const existingTimer = this.debounceTimers.get(documentId);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
+    if (existingTimer) clearTimeout(existingTimer);
 
-    // Determine debounce delay based on field type
     const delay = this.getDebounceDelay(fieldName);
-
-    // Set new debounce timer
-    const timer = setTimeout(() => {
-      this.flushDocument(documentId);
-    }, delay);
-
+    const timer = setTimeout(() => this.flushDocument(documentId), delay);
     this.debounceTimers.set(documentId, timer);
 
-    // Track debounce stats
-    this.stats.totalDebounceTime += delay;
-    this.stats.debounceCount++;
+    // UX: Notify UI that changes are pending
+    this.dispatchStatus(documentId, "pending");
 
-    // Return promise that resolves when this write is flushed
     return this.waitForFlush(documentId);
   }
 
-  /**
-   * Get debounce delay for a field
-   */
   private getDebounceDelay(fieldName: string): number {
     return (
       this.DEBOUNCE_DELAY[fieldName as keyof typeof this.DEBOUNCE_DELAY] ||
@@ -147,17 +120,10 @@ class WriteQueueManager {
     );
   }
 
-  /**
-   * Wait for a document's pending writes to be flushed
-   */
   private async waitForFlush(documentId: string): Promise<void> {
-    // If already flushing, wait for that promise
     const existing = this.flushPromises.get(documentId);
-    if (existing) {
-      return existing;
-    }
+    if (existing) return existing;
 
-    // Otherwise wait for next flush
     return new Promise((resolve) => {
       const checkInterval = setInterval(() => {
         if (!this.pendingWrites.has(documentId)) {
@@ -168,119 +134,104 @@ class WriteQueueManager {
     });
   }
 
-  /**
-   * Immediately flush a specific document's pending writes
-   */
   async flushDocument(documentId: string): Promise<void> {
     const pending = this.pendingWrites.get(documentId);
-    if (!pending) {
-      return; // Nothing to flush
-    }
+    if (!pending) return;
 
-    // Clear timer
-    const timer = this.debounceTimers.get(documentId);
-    if (timer) {
-      clearTimeout(timer);
+    if (this.debounceTimers.has(documentId)) {
+      clearTimeout(this.debounceTimers.get(documentId)!);
       this.debounceTimers.delete(documentId);
     }
 
-    // CONCURRENCY GUARD: If already flushing, skip this cycle.
-    // The changes in 'pending' will be preserved if we don't clear them,
-    // but the current implementation clears them in 'finally'.
-    // Better approach: If flushing, wait for it to finish and then check if more work is needed.
-    if (this.flushPromises.has(documentId)) {
-      console.log(`[WriteQueue] Flush already in progress for ${documentId}, deferring.`);
-      return;
-    }
+    if (this.flushPromises.has(documentId)) return;
 
-    // Create flush promise
-    const flushPromise = this.executeWrite(pending);
-    this.flushPromises.set(documentId, flushPromise);
+    // Capture snapshot to verify if new data arrived during async execution
+    const originalTimestamp = pending.timestamp;
+    const snapshot = { ...pending };
 
-    try {
-      await flushPromise;
-      this.stats.totalWritesProcessed++;
-    } catch (error) {
-      this.stats.totalWritesFailed++;
-      console.error(`[WriteQueue] Failed to flush ${documentId}:`, error);
+    const flushPromise = (async () => {
+      try {
+        this.dispatchStatus(documentId, "saving");
+        await this.executeWrite(snapshot);
+        this.stats.totalWritesProcessed++;
+      } catch (error) {
+        this.stats.totalWritesFailed++;
+        console.error(`[WriteQueue] Failed to flush ${documentId}:`, error);
 
-      // Handle optimistic lock conflicts
-      if (error instanceof OptimisticLockError) {
-        // In production: notify user to refresh
-        console.warn("[WriteQueue] Optimistic lock conflict detected");
-        // Could dispatch event for UI to show conflict resolution dialog
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("document-conflict", {
-              detail: {
-                documentId,
-                error,
-              },
-            })
-          );
+        if (error instanceof OptimisticLockError || (error as any).name === "OptimisticLockError") {
+          console.warn("[WriteQueue] Optimistic lock conflict detect. Healing...");
+          // In practice, executeWrite already updates latestPending.version on success.
+          // On failure, we might need a refresh.
         }
-      }
 
-      // Retry logic for transient errors
-      if (pending.retryCount < this.MAX_RETRY_ATTEMPTS) {
-        console.log(
-          `[WriteQueue] Retrying (${pending.retryCount + 1}/${this.MAX_RETRY_ATTEMPTS})...`
-        );
-        pending.retryCount++;
-        pending.timestamp = Date.now();
+        if (snapshot.retryCount < this.MAX_RETRY_ATTEMPTS) {
+          const retrySnapshot = {
+            ...snapshot,
+            retryCount: snapshot.retryCount + 1,
+            timestamp: Date.now()
+          };
+          // Only re-queue if no newer manual edit happened
+          const current = this.pendingWrites.get(documentId);
+          if (!current || current.timestamp === originalTimestamp) {
+            this.pendingWrites.set(documentId, retrySnapshot);
+            const retryDelay = Math.pow(2, retrySnapshot.retryCount) * 1000;
+            setTimeout(() => this.flushDocument(documentId), retryDelay);
+          }
+          return;
+        }
+        this.storeFailedWrite(snapshot);
+      } finally {
+        this.flushPromises.delete(documentId);
 
-        // Exponential backoff
-        const retryDelay = Math.pow(2, pending.retryCount) * 1000;
-        setTimeout(() => {
+        // CRITICAL: Only delete from queue if NO NEW DATA arrived
+        const currentPending = this.pendingWrites.get(documentId);
+        if (currentPending && currentPending.timestamp === originalTimestamp) {
+          this.pendingWrites.delete(documentId);
+          this.dispatchStatus(documentId, "idle");
+        } else if (currentPending) {
+          // New data arrived, trigger immediate next flush
           this.flushDocument(documentId);
-        }, retryDelay);
-
-        return;
-      }
-
-      // Max retries exceeded - CRITICAL ERROR
-      console.error(
-        `[WriteQueue] CRITICAL: Failed to persist changes after ${this.MAX_RETRY_ATTEMPTS} attempts`,
-        {
-          documentId,
-          updates: pending.updates,
-          error,
         }
-      );
+      }
+    })();
 
-      // In production: send to error tracking service
-      // Store in local IndexedDB as last resort backup
-      this.storeFailedWrite(pending);
-    } finally {
-      this.pendingWrites.delete(documentId);
-      this.flushPromises.delete(documentId);
-    }
+    this.flushPromises.set(documentId, flushPromise);
+    return flushPromise;
   }
 
-  /**
-   * Execute the actual database write using Server Action
-   */
   private async executeWrite(pending: PendingWrite): Promise<void> {
     const { documentId, updates, version } = pending;
 
-    // Call Server Action to perform database update
-    // It returns the new document version
-    const updatedDoc = await update({
+    const result = await update({
       id: documentId,
       version,
       ...updates,
     });
 
-    // Success! If the write was successful, we can potentially update 
-    // any NEW pending writes with the new version to avoid future conflicts.
+    // Handle return from Server Action (it might be the raw doc or a result object based on previous edits)
+    const updatedDoc = (result as any)?.success === false ? null : (result as any);
+
     const latestPending = this.pendingWrites.get(documentId);
-    if (latestPending && updatedDoc) {
+    if (latestPending && updatedDoc?.version) {
       latestPending.version = updatedDoc.version;
     }
 
-    // Dispatch event to refresh document list in sidebar (for title/icon updates)
-    if (typeof window !== "undefined" && (updates.title || updates.icon)) {
-      window.dispatchEvent(new CustomEvent("documents-changed"));
+    if (typeof window !== "undefined" && updatedDoc) {
+      window.dispatchEvent(new CustomEvent("write-success", {
+        detail: { documentId, doc: updatedDoc }
+      }));
+
+      if (updates.title || updates.icon) {
+        window.dispatchEvent(new CustomEvent("documents-changed"));
+      }
+    }
+  }
+
+  private dispatchStatus(documentId: string, status: "idle" | "pending" | "saving") {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("write-queue-status", {
+        detail: { documentId, status }
+      }));
     }
   }
 

@@ -3,7 +3,7 @@
 import React, { ElementRef, useRef, useState, useCallback, useEffect } from "react";
 import { IconPicker } from "@/components/icon-picker";
 import { Button } from "@/components/ui/button";
-import { ImageIcon, Smile, X } from "lucide-react";
+import { ImageIcon, Smile, X, Loader2 } from "lucide-react";
 import TextareaAutosize from "react-textarea-autosize";
 import { useCoverImage } from "@/hooks/use-cover-image";
 import { useDocumentStore, useDocumentTitle, useDocumentIcon } from "@/store/use-document-store";
@@ -20,6 +20,18 @@ interface ToolbarProps {
 export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
   const inputRef = useRef<ElementRef<"textarea">>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "pending" | "saving">("idle");
+
+  // Listen for write queue status updates
+  useEffect(() => {
+    const handleStatus = (e: any) => {
+      if (e.detail?.documentId === initialData.id) {
+        setSaveStatus(e.detail.status);
+      }
+    };
+    window.addEventListener("write-queue-status", handleStatus as EventListener);
+    return () => window.removeEventListener("write-queue-status", handleStatus as EventListener);
+  }, [initialData.id]);
 
   // Use Zustand store for real-time sync
   const { setDocument, updateTitle, updateIcon } = useDocumentStore();
@@ -142,26 +154,46 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
         )}
       </div>
       {isEditing && !preview ? (
-        <TextareaAutosize
-          ref={inputRef}
-          onBlur={disableInput}
-          onKeyDown={onKeyDown}
-          value={isPlaceholder ? "" : rawTitle}
-          placeholder={PLACEHOLDER_TITLE}
-          onChange={(e) => onInput(e.target.value)}
-          className="text-4xl bg-transparent font-bold break-words outline-none text-[#3F3F3F] dark:text-[#CFCFCF] resize-none w-full placeholder:text-[#9B9B9B] dark:placeholder:text-[#5C5C5C]"
-        />
-      ) : (
-        <div
-          onClick={enableInput}
-          className={cn(
-            "pb-2 text-4xl font-bold break-words outline-none cursor-text",
-            isPlaceholder
-              ? "text-[#9B9B9B] dark:text-[#5C5C5C]"
-              : "text-[#3F3F3F] dark:text-[#CFCFCF]"
+        <div className="relative w-full">
+          <TextareaAutosize
+            ref={inputRef}
+            onBlur={disableInput}
+            onKeyDown={onKeyDown}
+            value={isPlaceholder ? "" : rawTitle}
+            placeholder={PLACEHOLDER_TITLE}
+            onChange={(e) => onInput(e.target.value)}
+            className="text-4xl bg-transparent font-bold break-words outline-none text-[#3F3F3F] dark:text-[#CFCFCF] resize-none w-full placeholder:text-[#9B9B9B] dark:placeholder:text-[#5C5C5C]"
+          />
+          {saveStatus !== "idle" && (
+            <div className="absolute -bottom-6 left-0 flex items-center gap-x-2 text-xs text-muted-foreground animate-in fade-in duration-300">
+              {saveStatus === "saving" ? (
+                <Loader2 className="h-3 w-3 animate-spin text-orange-500" />
+              ) : (
+                <div className="h-2 w-2 rounded-full bg-orange-400 animate-pulse" />
+              )}
+              <span>{saveStatus === "saving" ? "Saving progress..." : "Changes pending..."}</span>
+            </div>
           )}
-        >
-          {displayTitle}
+        </div>
+      ) : (
+        <div className="relative group/title">
+          <div
+            onClick={enableInput}
+            className={cn(
+              "pb-2 text-4xl font-bold break-words outline-none cursor-text",
+              isPlaceholder
+                ? "text-[#9B9B9B] dark:text-[#5C5C5C]"
+                : "text-[#3F3F3F] dark:text-[#CFCFCF]"
+            )}
+          >
+            {displayTitle}
+          </div>
+          {saveStatus !== "idle" && !isEditing && (
+            <div className="absolute -bottom-4 left-0 flex items-center gap-x-2 text-[10px] text-muted-foreground opacity-70">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              <span>Synchronizing...</span>
+            </div>
+          )}
         </div>
       )}
     </div>

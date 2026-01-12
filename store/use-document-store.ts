@@ -36,18 +36,23 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     documents: new Map(),
 
     /**
-     * Initialize a document's metadata - ONLY if not already in store
-     * This prevents server data from overwriting user's live edits
+     * Initialize or sync document's metadata
      */
     setDocument: (doc: DocumentMetadata) => {
         const existing = get().documents.get(doc.id);
 
-        // Only initialize if document is not already in store
-        // This prevents flicker when SWR revalidates
-        if (!existing) {
+        // background sync: Update only if version is newer, but preserve local live edits
+        if (!existing || doc.version > existing.version) {
             set((state) => {
                 const newDocs = new Map(state.documents);
-                newDocs.set(doc.id, doc);
+                const isBusy = writeQueue.hasPendingWrites(doc.id);
+
+                newDocs.set(doc.id, {
+                    ...doc,
+                    // If we are currently typing (busy), keep our local title/icon
+                    title: isBusy && existing ? existing.title : doc.title,
+                    icon: isBusy && existing ? existing.icon : doc.icon,
+                });
                 return { documents: newDocs };
             });
         }
@@ -129,6 +134,16 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
         });
     },
 }));
+
+// Event listener for write success to keep version in sync without SWR delay
+if (typeof window !== "undefined") {
+    window.addEventListener("write-success", (e: any) => {
+        const { doc } = e.detail;
+        if (doc) {
+            useDocumentStore.getState().setDocument(doc);
+        }
+    });
+}
 
 /**
  * Hook for subscribing to a specific document's metadata
