@@ -48,7 +48,7 @@ export const canvases = pgTable("canvases", {
  * Supports all Excalidraw element types + custom types
  */
 export const canvasElements = pgTable("canvas_elements", {
-    id: uuid("id").primaryKey(), // Use Excalidraw element ID
+    id: text("id").primaryKey(), // Use Excalidraw element ID (string)
     canvasId: uuid("canvas_id").notNull().references(() => canvases.id, { onDelete: 'cascade' }),
 
     // Element type (rectangle, ellipse, arrow, text, etc.)
@@ -189,7 +189,7 @@ export const documentCanvasBindings = pgTable("document_canvas_bindings", {
 
     // Target (canvas side)
     canvasId: uuid("canvas_id").notNull().references(() => canvases.id, { onDelete: 'cascade' }),
-    elementId: uuid("element_id"), // Can be element or compound
+    elementId: text("element_id"), // Can be element or compound (string ID)
     compoundNodeId: uuid("compound_node_id").references(() => compoundNodes.id, { onDelete: 'cascade' }),
 
     // Binding metadata

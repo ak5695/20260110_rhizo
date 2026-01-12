@@ -10,8 +10,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { dragDropBridge } from "@/lib/canvas/drag-drop-bridge";
-import { DRAG_MIME_TYPE, DragPayload, DropResult } from "@/lib/canvas/drag-drop-types";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
+import { DRAG_MIME_TYPE, DragPayload, DropResult, ExcalidrawElement } from "@/lib/canvas/drag-drop-types";
 
 interface CanvasDropZoneProps {
   children: React.ReactNode;
@@ -88,10 +87,15 @@ export const CanvasDropZone: React.FC<CanvasDropZoneProps> = ({
         return;
       }
 
-      const payload = dragDropBridge.parseDragPayload(payloadStr);
+      const payload = dragDropBridge.deserializeDragPayload(payloadStr);
+
+      if (!payload) {
+        console.warn("[CanvasDropZone] Failed to parse drag payload");
+        return;
+      }
 
       // Validate drop
-      const validation = dragDropBridge.validateDrop(payload, { canvasId, documentId });
+      const validation = dragDropBridge.validateDrop(payload);
       if (!validation.isValid) {
         console.warn("[CanvasDropZone] Invalid drop:", validation.reason);
         return;
@@ -126,21 +130,8 @@ export const CanvasDropZone: React.FC<CanvasDropZoneProps> = ({
       const result: DropResult = {
         success: true,
         elements,
-        binding: {
-          documentId: payload.documentId,
-          blockId: payload.blockId,
-          semanticNodeId: payload.semanticNodeId,
-          canvasId,
-          elementId: elements[0].id,
-          bindingType: "drag_drop",
-          sourceType: payload.sourceType,
-          anchorText: payload.text,
-          metadata: {
-            ...payload.metadata,
-            createdAt: new Date().toISOString(),
-            dropPosition: canvasPosition,
-          },
-        },
+        elementIds: elements.map(el => el.id),
+        position: canvasPosition,
       };
 
       onBindingCreated?.(result);

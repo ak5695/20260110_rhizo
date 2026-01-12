@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, ReactNode } from "react";
 import { dragDropBridge } from "@/lib/canvas/drag-drop-bridge";
-import { DRAG_MIME_TYPE } from "@/lib/canvas/drag-drop-types";
+import { DRAG_MIME_TYPE, DragSourceType } from "@/lib/canvas/drag-drop-types";
 
 interface EditorDragHandlerProps {
   children: ReactNode;
@@ -85,14 +85,14 @@ export const EditorDragHandler: React.FC<EditorDragHandlerProps> = ({
       }
 
       // Determine source type based on block type or selection context
-      let sourceType: "text" | "heading" | "paragraph" | "code" = "text";
+      let sourceType: DragSourceType = "text";
 
       if (blockType.includes("heading")) {
         sourceType = "heading";
       } else if (blockType === "code") {
         sourceType = "code";
       } else if (blockId) {
-        sourceType = "paragraph";
+        sourceType = "block";
       }
 
       // Create drag payload
@@ -212,9 +212,9 @@ function createDragImage(text: string, sourceType: string): HTMLElement {
   } else if (sourceType === "code") {
     bgColor = "from-gray-700 to-gray-900";
     icon = "💻";
-  } else if (sourceType === "paragraph") {
+  } else if (sourceType === "block") {
     bgColor = "from-indigo-500 to-purple-500";
-    icon = "📄";
+    icon = "🧱";
   }
 
   dragImage.innerHTML = `

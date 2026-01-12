@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { Loader2, Sparkles, Send, X } from "lucide-react";
+import { Loader2, Sparkles, Send, X, Copy, Check, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   id: string;
@@ -16,6 +17,7 @@ interface AiChatModalProps {
   onClose: () => void;
   position?: { top: number; left: number };
   onInsertText?: (text: string) => void;
+  initialInput?: string;
 }
 
 export const AiChatModal = ({
@@ -23,6 +25,7 @@ export const AiChatModal = ({
   onClose,
   position,
   onInsertText,
+  initialInput = "",
 }: AiChatModalProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -31,11 +34,28 @@ export const AiChatModal = ({
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Focus input when modal opens
+  // Set initial input when modal opens with initialInput
+  useEffect(() => {
+    if (isOpen && initialInput) {
+      setInput(initialInput);
+    }
+  }, [isOpen, initialInput]);
+
+  // Focus input when modal opens and move cursor to end
   useEffect(() => {
     if (isOpen && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          // Move cursor to end
+          inputRef.current.setSelectionRange(
+            inputRef.current.value.length,
+            inputRef.current.value.length
+          );
+        }
+      }, 100);
     }
   }, [isOpen]);
 
@@ -82,6 +102,12 @@ export const AiChatModal = ({
       setInput("");
     }
   }, [isOpen]);
+
+  const onCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const handleSubmit = useCallback(async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -168,17 +194,6 @@ export const AiChatModal = ({
     }
   }, [input, isLoading, messages]);
 
-  // Insert last AI response into document
-  const handleInsert = useCallback(() => {
-    const lastAssistantMessage = messages
-      .filter((m) => m.role === "assistant")
-      .pop();
-    if (lastAssistantMessage && onInsertText) {
-      onInsertText(lastAssistantMessage.content);
-      onClose();
-    }
-  }, [messages, onInsertText, onClose]);
-
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value);
   }, []);
@@ -237,15 +252,62 @@ export const AiChatModal = ({
               >
                 <div
                   className={cn(
-                    "max-w-[80%] rounded-lg px-4 py-2",
+                    "max-w-[80%] rounded-lg px-4 py-2 relative group",
                     message.role === "user"
                       ? "bg-rose-600 text-white"
                       : "bg-muted text-foreground"
                   )}
                 >
-                  <p className="text-sm whitespace-pre-wrap">
-                    {message.content || (isLoading && message.role === "assistant" ? "..." : "")}
-                  </p>
+                  <div className="flex flex-col gap-1">
+                    <div className="text-sm prose dark:prose-invert prose-sm max-w-none">
+                      <ReactMarkdown
+                        components={{
+                          p: ({ children }) => <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>,
+                          ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+                          li: ({ children }) => <li className="mb-1">{children}</li>,
+                          code: ({ children }) => <code className="bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 font-mono text-xs">{children}</code>,
+                          pre: ({ children }) => <pre className="bg-black/10 dark:bg-white/10 rounded p-2 mb-2 overflow-x-auto font-mono text-xs">{children}</pre>,
+                          h1: ({ children }) => <h1 className="text-lg font-bold mb-2">{children}</h1>,
+                          h2: ({ children }) => <h2 className="text-base font-bold mb-2">{children}</h2>,
+                          h3: ({ children }) => <h3 className="text-sm font-bold mb-2">{children}</h3>,
+                        }}
+                      >
+                        {message.content || (isLoading && message.role === "assistant" ? "..." : "")}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+
+                  {/* Assistant Action Buttons */}
+                  {message.role === "assistant" && message.content && !isLoading && (
+                    <div className="flex items-center gap-x-2 mt-2 pt-2 border-t border-black/5 dark:border-white/5">
+                      <button
+                        onClick={() => onCopy(message.content, message.id)}
+                        className="flex items-center gap-1 px-1.5 py-1 rounded bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition"
+                        title="Copy to clipboard"
+                      >
+                        {copiedId === message.id ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                        <span className="text-[10px] font-medium">{copiedId === message.id ? "Copied" : "Copy"}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (onInsertText) {
+                            onInsertText(message.content);
+                            onClose();
+                          }
+                        }}
+                        className="flex items-center gap-1 px-1.5 py-1 rounded bg-black/5 dark:bg-white/5 hover:bg-rose-500/10 hover:text-rose-600 transition"
+                        title="Insert to editor"
+                      >
+                        <FileDown className="w-3.5 h-3.5" />
+                        <span className="text-[10px] font-medium">Insert</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -273,7 +335,7 @@ export const AiChatModal = ({
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder="Ask AI to write, edit, or continue..."
-              className="flex-1 px-3 py-2 text-sm border border-input rounded-md bg-transparent text-foreground focus:outline-none focus:ring-2 focus:ring-gray-500 dark:focus:ring-gray-400"
+              className="outline-none flex-1 px-3 py-2 text-sm border border-neutral-300 dark:border-white/10 rounded-md bg-transparent text-foreground focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-500"
               disabled={isLoading}
               autoComplete="off"
             />
@@ -286,21 +348,9 @@ export const AiChatModal = ({
               {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Send className="w-4 h-4 dark:text-white" />
+                <Send className="w-4 h-4 text-black dark:text-white " />
               )}
             </Button>
-            {messages.some((m) => m.role === "assistant" && m.content) && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="border-2 border-rose-600"
-                onClick={handleInsert}
-                disabled={isLoading}
-              >
-                Insert
-              </Button>
-            )}
           </div>
         </form>
       </div>

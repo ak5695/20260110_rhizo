@@ -55,6 +55,7 @@ export default function DocumentIdPage() {
       <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
         <Toolbar preview initialData={document} />
         <Editor
+          documentId={document.id}
           editable={false}
           onChange={() => { }}
           initialContent={document.content}

@@ -11,6 +11,7 @@ import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { writeQueue } from "@/lib/write-queue";
 import { OptimisticLockError } from "@/lib/errors";
+import { SelectionToolbar } from "@/components/selection-toolbar";
 
 export default function DocumentIdPage() {
   const { documentId } = useParams();
@@ -144,6 +145,7 @@ export default function DocumentIdPage() {
 
           <div className="flex-1 relative border-l border-white/5 bg-white dark:bg-gray-900 overflow-hidden">
             <ExcalidrawCanvas
+              documentId={documentId as string}
               isFullscreen={isCanvasFullscreen}
               onToggleFullscreen={toggleCanvasFullscreen}
             />
@@ -151,6 +153,12 @@ export default function DocumentIdPage() {
         </div>
       )
       }
+
+      {/* Selection Toolbar - appears when text is selected */}
+      <SelectionToolbar
+        documentId={documentId as string}
+        onEnsureCanvas={() => setIsCanvasOpen(true)}
+      />
     </div >
   );
 }

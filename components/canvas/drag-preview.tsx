@@ -26,8 +26,6 @@ const getSourceIcon = (sourceType: DragSourceType) => {
       return <Code className="w-4 h-4" />;
     case "list-item":
       return <List className="w-4 h-4" />;
-    case "checkbox":
-      return <CheckSquare className="w-4 h-4" />;
     default:
       return <FileText className="w-4 h-4" />;
   }
@@ -37,14 +35,10 @@ const getSourceLabel = (sourceType: DragSourceType) => {
   switch (sourceType) {
     case "heading":
       return "Heading";
-    case "paragraph":
-      return "Paragraph";
     case "code":
       return "Code Block";
     case "list-item":
       return "List Item";
-    case "checkbox":
-      return "Checkbox";
     case "block":
       return "Block";
     case "semantic-node":

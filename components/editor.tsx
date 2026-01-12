@@ -603,35 +603,59 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId }: Edit
           }
         />
       </BlockNoteView>
-      {activeSelection && (
-        <SemanticSovereigntyPalette
-          editor={editor}
-          selectionText={activeSelection}
-          onAction={handleSemanticAction}
-          existingAnchor={existingAnchor}
-        />
-      )}
+      {/* SemanticSovereigntyPalette removed - functionality moved to SelectionToolbar */}
       <AiChatModal
         isOpen={showAiModal}
         onClose={handleCloseAiModal}
         position={aiModalPosition}
-        onInsertText={(text) => {
+        onInsertText={async (text) => {
           if (editor) {
             const targetBlock = savedCursorBlockRef.current
               ? editor.getBlock(savedCursorBlockRef.current)
               : editor.getTextCursorPosition().block;
 
             if (targetBlock) {
-              editor.insertBlocks(
-                [
-                  {
-                    type: "paragraph",
-                    content: text,
-                  },
-                ],
-                targetBlock,
-                "after"
-              );
+              try {
+                // Try to parse markdown to blocks for beautified insertion
+                const blocks = await editor.tryParseMarkdownToBlocks(text);
+
+                // Insert blocks after target
+                editor.insertBlocks(blocks, targetBlock, "after");
+
+                // Move cursor to the end of the last inserted block
+                // We find it by traversing nextBlock from targetBlock
+                setTimeout(() => {
+                  let lastInsertedBlock = targetBlock;
+                  for (let i = 0; i < blocks.length; i++) {
+                    const next = editor.getNextBlock(lastInsertedBlock);
+                    if (next) {
+                      lastInsertedBlock = next;
+                    } else {
+                      break;
+                    }
+                  }
+
+                  if (lastInsertedBlock !== targetBlock) {
+                    editor.setTextCursorPosition(lastInsertedBlock, "end");
+                  }
+                }, 100);
+              } catch (error) {
+                console.error("Failed to parse markdown to blocks:", error);
+                // Fallback to simple paragraph insertion if parsing fails
+                const fallbackBlock = {
+                  type: "paragraph",
+                  content: text,
+                } as any;
+
+                editor.insertBlocks([fallbackBlock], targetBlock, "after");
+
+                setTimeout(() => {
+                  const next = editor.getNextBlock(targetBlock);
+                  if (next) {
+                    editor.setTextCursorPosition(next, "end");
+                  }
+                }, 100);
+              }
             }
           }
         }}

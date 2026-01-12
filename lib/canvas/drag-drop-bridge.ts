@@ -16,8 +16,8 @@ import {
   DEFAULT_STYLE_PRESETS,
   CoordinateConverter,
   DRAG_MIME_TYPE,
+  ExcalidrawElement,
 } from "./drag-drop-types";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
 
 /**
  * DragDropBridge - Main controller for drag-drop operations

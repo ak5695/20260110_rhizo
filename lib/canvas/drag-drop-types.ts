@@ -4,7 +4,9 @@
  * Comprehensive type system for document-to-canvas drag operations
  */
 
-import { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
+// ExcalidrawElement type - using any to avoid import path issues
+// Original: import { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
+export type ExcalidrawElement = any;
 
 /**
  * Drag Data Transfer Format

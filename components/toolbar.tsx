@@ -87,7 +87,7 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
       {!!initialData.icon && !preview && (
         <div className={cn(
           "flex items-center gap-x-2 group/icon pt-6",
-          !!initialData.coverImage && "-mt-16 pt-0"
+          !!initialData.coverImage && "-mt-8 pt-0"
         )}>
           <IconPicker onChange={onIconSelect}>
             <p className="text-5xl hover:opacity-75 transition">
@@ -108,7 +108,7 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
       {!!initialData.icon && preview && (
         <p className={cn(
           "text-5xl pt-4",
-          !!initialData.coverImage && "-mt-16 pt-0"
+          !!initialData.coverImage && "-mt-8 pt-0"
         )}>
           {initialData.icon}
         </p>

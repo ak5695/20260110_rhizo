@@ -25,7 +25,7 @@ export const getSemanticGraphData = async (documentId: string) => {
         });
 
         // 3. 提取涉及的 unique nodeIds
-        const nodeIds = [...new Set(anchors.map(a => a.nodeId))];
+        const nodeIds = Array.from(new Set(anchors.map(a => a.nodeId)));
         if (nodeIds.length === 0) return { nodes: [], links: [] };
 
         // 4. 获取对应的节点详情
@@ -43,7 +43,7 @@ export const getSemanticGraphData = async (documentId: string) => {
 
         for (const [blockId, involvedNodeIds] of Object.entries(anchorsByBlock)) {
             // 对每两个不同的节点建立一条线
-            const uniqueInvolved = [...new Set(involvedNodeIds)];
+            const uniqueInvolved = Array.from(new Set(involvedNodeIds));
             for (let i = 0; i < uniqueInvolved.length; i++) {
                 for (let j = i + 1; j < uniqueInvolved.length; j++) {
                     links.push({

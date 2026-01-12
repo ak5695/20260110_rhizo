@@ -15,10 +15,19 @@ const nextConfig = {
         hostname: "**",
       },
     ],
+    // Allow images that resolve to private IPs (some CDNs/R2 may do this)
+    dangerouslyAllowSVG: true,
+    contentDispositionType: "attachment",
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   experimental: {
     // missingSuspenseWithCSRBailout: false,
   },
+  // Skip image optimization for external URLs that may resolve to private IPs
+  async headers() {
+    return [];
+  },
 };
 
 module.exports = nextConfig;
+

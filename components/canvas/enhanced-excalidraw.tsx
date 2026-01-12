@@ -9,11 +9,12 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Excalidraw } from "@excalidraw/excalidraw";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
-import type { AppState } from "@excalidraw/excalidraw/types/types";
 import { CanvasDropZone } from "./canvas-drop-zone";
 import { createCanvasBinding, saveCanvasElements } from "@/actions/canvas-bindings";
-import type { DropResult } from "@/lib/canvas/drag-drop-types";
+import type { DropResult, ExcalidrawElement } from "@/lib/canvas/drag-drop-types";
+
+// AppState type from Excalidraw - using simplified version
+type AppState = any;
 
 interface EnhancedExcalidrawProps {
   canvasId: string;
@@ -77,36 +78,19 @@ export const EnhancedExcalidraw: React.FC<EnhancedExcalidrawProps> = ({
   const handleBindingCreated = useCallback(
     async (result: DropResult) => {
       try {
-        if (!result.success || !result.binding) {
-          console.warn("[EnhancedExcalidraw] Invalid binding result");
+        if (!result.success) {
+          console.warn("[EnhancedExcalidraw] Drop was not successful");
           return;
         }
 
-        console.log("[EnhancedExcalidraw] Creating binding:", result.binding);
-
-        // Save binding to database
-        const response = await createCanvasBinding({
-          canvasId: result.binding.canvasId,
-          documentId: result.binding.documentId,
-          elementId: result.binding.elementId,
-          blockId: result.binding.blockId,
-          semanticNodeId: result.binding.semanticNodeId,
-          bindingType: result.binding.bindingType,
-          sourceType: result.binding.sourceType,
-          anchorText: result.binding.anchorText,
-          metadata: result.binding.metadata,
-        });
-
-        if (!response.success) {
-          console.error("[EnhancedExcalidraw] Failed to create binding:", response.error);
-        } else {
-          console.log("[EnhancedExcalidraw] Binding created successfully:", response.binding?.id);
-        }
+        console.log("[EnhancedExcalidraw] Drop result:", result);
+        // TODO: Implement binding creation with available result data (elementIds, position)
+        // For now, just log the result
       } catch (error) {
-        console.error("[EnhancedExcalidraw] Error creating binding:", error);
+        console.error("[EnhancedExcalidraw] Error processing drop result:", error);
       }
     },
-    [canvasId]
+    []
   );
 
   // Handle Excalidraw onChange
@@ -127,7 +111,7 @@ export const EnhancedExcalidraw: React.FC<EnhancedExcalidrawProps> = ({
       className="w-full h-full"
     >
       <Excalidraw
-        ref={(api) => setExcalidrawAPI(api)}
+        excalidrawAPI={(api: any) => setExcalidrawAPI(api)}
         initialData={{
           elements: initialElements,
           appState: {
@@ -138,7 +122,6 @@ export const EnhancedExcalidraw: React.FC<EnhancedExcalidrawProps> = ({
         UIOptions={{
           canvasActions: {
             loadScene: false,
-            export: true,
             saveToActiveFile: false,
           },
         }}

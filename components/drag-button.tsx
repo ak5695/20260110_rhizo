@@ -27,8 +27,9 @@ export const DragButton: React.FC<DragButtonProps> = ({
   const [selectedText, setSelectedText] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
-  const hideTimeoutRef = useRef<NodeJS.Timeout>();
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Listen for selection changes and show button directly
   useEffect(() => {
     const handleSelectionChange = () => {
       // Clear existing timeout
@@ -41,14 +42,14 @@ export const DragButton: React.FC<DragButtonProps> = ({
         // Hide button after a short delay
         hideTimeoutRef.current = setTimeout(() => {
           setVisible(false);
-        }, 200);
+        }, 300);
         return;
       }
 
       const text = selection.toString().trim();
 
-      // Only show for meaningful selections (> 3 characters)
-      if (text.length > 3) {
+      // Show for any non-empty selection
+      if (text.length > 0) {
         setSelectedText(text);
 
         const range = selection.getRangeAt(0);
@@ -64,7 +65,7 @@ export const DragButton: React.FC<DragButtonProps> = ({
       } else {
         hideTimeoutRef.current = setTimeout(() => {
           setVisible(false);
-        }, 200);
+        }, 300);
       }
     };
 
@@ -102,8 +103,8 @@ export const DragButton: React.FC<DragButtonProps> = ({
           sourceType = "heading";
         } else if (nodeType === "code") {
           sourceType = "code";
-        } else if (nodeType === "paragraph") {
-          sourceType = "paragraph";
+        } else if (nodeType === "listItem") {
+          sourceType = "list-item";
         }
       }
     }
@@ -222,8 +223,8 @@ function createDragImage(text: string, sourceType: DragSourceType): HTMLElement 
       bgColor = "#1f2937"; // Dark gray
       borderColor = "#4b5563";
       break;
-    case "paragraph":
-      icon = "📄";
+    case "list-item":
+      icon = "📋";
       bgColor = "#e0e7ff"; // Indigo
       borderColor = "#6366f1";
       break;
@@ -281,14 +282,16 @@ function getSourceLabel(sourceType: DragSourceType): string {
   switch (sourceType) {
     case "heading":
       return "Heading";
-    case "paragraph":
-      return "Paragraph";
     case "code":
       return "Code Block";
     case "list-item":
       return "List Item";
     case "text":
       return "Text";
+    case "block":
+      return "Block";
+    case "semantic-node":
+      return "Concept";
     default:
       return "Content";
   }
