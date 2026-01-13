@@ -61,6 +61,16 @@ export async function createCanvasBinding(input: CreateBindingInput) {
 
     console.log("[createCanvasBinding] Binding created:", binding.id);
 
+    // Register with ExistenceEngine (EAS) to update memory maps
+    try {
+      const { existenceEngine } = await import('@/lib/existence-engine');
+      await existenceEngine.registerBinding(binding);
+    } catch (e) {
+      console.error("[createCanvasBinding] Failed to register with ExistenceEngine:", e);
+      // We don't fail the request, just log it. 
+      // It might be that the engine is not initialized for this canvas yet, which is fine.
+    }
+
     return {
       success: true,
       binding,
@@ -378,6 +388,58 @@ export async function deleteBindingsByElementIds(canvasId: string, elementIds: s
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to delete bindings",
+    };
+  }
+}
+
+/**
+ * Batch update binding statuses (for optimistic sync)
+ * Single DB transaction for multiple updates
+ */
+export async function batchUpdateBindingStatus(
+  updates: Array<{ bindingId: string; status: 'visible' | 'hidden' | 'deleted' | 'pending' }>
+) {
+  try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+
+    if (!session?.user) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    if (updates.length === 0) {
+      return { success: true, updatedCount: 0 };
+    }
+
+    const userId = session.user.id;
+
+    // Batch update using Promise.all for parallelism
+    await Promise.all(
+      updates.map(({ bindingId, status }) =>
+        db
+          .update(documentCanvasBindings)
+          .set({
+            currentStatus: status,
+            statusUpdatedAt: new Date(),
+            statusUpdatedBy: userId,
+            updatedAt: new Date(),
+          })
+          .where(eq(documentCanvasBindings.id, bindingId))
+      )
+    );
+
+    console.log("[batchUpdateBindingStatus] Updated", updates.length, "bindings");
+
+    return {
+      success: true,
+      updatedCount: updates.length,
+    };
+  } catch (error) {
+    console.error("[batchUpdateBindingStatus] Error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to batch update bindings",
     };
   }
 }

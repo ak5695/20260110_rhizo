@@ -13,7 +13,7 @@ import { useParams } from "next/navigation";
 import { writeQueue } from "@/lib/write-queue";
 import { SelectionToolbar } from "@/components/selection-toolbar";
 import { DocumentOutline } from "@/components/document-outline";
-import { useDocument } from "@/store/use-document-store";
+import { useDocument, useDocumentStore } from "@/store/use-document-store";
 import {
   useLayoutStore,
   useCanvasOpen,
@@ -53,89 +53,84 @@ export default function DocumentIdPage() {
   );
 
   const optimism = useDocument(documentId as string);
-  const [document, setDocument] = useState<any>(optimism);
-  const documentVersionRef = useRef<number>(optimism?.version || 0);
-
-  // Sync state if optimism changes (e.g. from store seeding)
-  useEffect(() => {
-    if (optimism && !document) {
-      setDocument(optimism);
-      documentVersionRef.current = optimism.version;
-    }
-  }, [optimism, document]);
+  const [document, setDocument] = useState<any>(null); // Start with null, not optimism
   const [editorDocument, setEditorDocument] = useState<any>(null);
+  const documentVersionRef = useRef<number>(0);
+  const lastDocumentIdRef = useRef<string | null>(null);
 
-  // Use Zustand store for layout state (no more useState + props drilling!)
+  // Use Zustand store for layout state
   const isCanvasOpen = useCanvasOpen();
   const isCanvasFullscreen = useCanvasFullscreen();
   const isOutlineOpen = useOutlineOpen();
   const { toggleCanvas, toggleFullscreen, toggleOutline, openCanvas } = useLayoutStore();
 
-  // ⚡ Enterprise Load Strategy (Notion-like)
-  // 1. Level 1: Check UI Store (Zustand) - Instant
-  // 2. Level 2: Check Local Persistence (IndexedDB) - <10ms
-  // 3. Level 3: Background Server Sync & Collision handling
+  // ⚡ Instant Document Loading - Cache-First Strategy
+  // Goal: NEVER show loading skeleton when switching between cached documents
   useEffect(() => {
     if (typeof documentId !== "string") return;
 
-    let isMounted = true;
-    let retryCount = 0;
-    const maxRetries = 3;
+    // If same document, skip
+    if (lastDocumentIdRef.current === documentId && document) return;
+    lastDocumentIdRef.current = documentId;
 
-    const load = async () => {
-      // Step 2: Try Local Persistent Cache if not in UI store
-      // We do this BEFORE the server action to ensure "Instant Load"
-      if (!document) {
-        import("@/lib/cache/document-cache").then(async ({ documentCache }) => {
-          try {
-            // We use a dummy fetchFn because we just want to peek at cache
-            const cached = await documentCache.get(documentId as string, async () => null);
-            if (cached && isMounted && !document) {
-              console.log("[DocumentPage] L2 Cache Hit - Instant Loading");
-              setDocument(cached);
-              documentVersionRef.current = cached.version;
-            }
-          } catch (e) { /* ignore cache errors */ }
-        });
+    let isMounted = true;
+
+    const loadDocument = async () => {
+      // 【Step 1】立即检查 Zustand Store（同步，零延迟）
+      const storeDoc = useDocumentStore.getState().documents.get(documentId);
+      if (storeDoc && isMounted) {
+        console.log("[DocumentPage] Instant from Zustand Store");
+        setDocument(storeDoc);
+        documentVersionRef.current = storeDoc.version || 0;
       }
 
+      // 【Step 2】检查 IndexedDB 缓存（异步，<10ms）
       try {
-        const doc = await getById(documentId);
-
-        if (doc) {
-          if (isMounted) {
-            // Only update if newer version or first load
-            if (!document || doc.version >= documentVersionRef.current) {
-              setDocument(doc);
-              documentVersionRef.current = doc.version;
-
-              // Seed cache for next time
-              import("@/lib/cache/document-cache").then(({ documentCache }) => {
-                documentCache.set(documentId as string, doc);
-              });
-            }
+        const { documentCache } = await import("@/lib/cache/document-cache");
+        const cached = await documentCache.get(documentId, async () => null);
+        if (cached && isMounted) {
+          // Only update if we don't have data yet or cache is newer
+          if (!document || cached.version > documentVersionRef.current) {
+            console.log("[DocumentPage] Instant from IndexedDB Cache");
+            setDocument(cached);
+            documentVersionRef.current = cached.version;
           }
-        } else if (retryCount < maxRetries) {
-          retryCount++;
-          const delay = retryCount === 1 ? 100 : 200 * Math.pow(2, retryCount - 2);
-          setTimeout(load, delay);
-        } else {
-          if (isMounted) setDocument(null);
+        }
+      } catch (e) {
+        console.warn("[DocumentPage] Cache read error:", e);
+      }
+
+      // 【Step 3】后台从服务器同步（不阻塞UI）
+      try {
+        const serverDoc = await getById(documentId);
+        if (serverDoc && isMounted) {
+          // Only update if server has newer version
+          if (serverDoc.version >= documentVersionRef.current) {
+            setDocument(serverDoc);
+            documentVersionRef.current = serverDoc.version;
+
+            // Update cache for next time
+            const { documentCache } = await import("@/lib/cache/document-cache");
+            documentCache.set(documentId, serverDoc);
+
+            console.log("[DocumentPage] Synced from server, version:", serverDoc.version);
+          }
+        } else if (!document && isMounted) {
+          // Document not found and we have no cached version
+          setDocument(null);
         }
       } catch (err) {
-        if (retryCount < maxRetries) {
-          retryCount++;
-          const delay = 200 * Math.pow(2, retryCount - 1);
-          setTimeout(load, delay);
-        } else if (isMounted) {
+        console.error("[DocumentPage] Server fetch error:", err);
+        // Keep showing cached data if available
+        if (!document && isMounted) {
           setDocument(null);
         }
       }
     };
 
-    load();
+    loadDocument();
     return () => { isMounted = false; };
-  }, [documentId, document]);
+  }, [documentId]); // Only depend on documentId, not document
 
   // Listen for document conflicts
   useEffect(() => {

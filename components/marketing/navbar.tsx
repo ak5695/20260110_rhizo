@@ -9,8 +9,10 @@ import { Spinner } from "@/components/spinner";
 import Link from "next/link";
 import { UserItem } from "@/components/main/user-item";
 
+import { useCachedSession } from "@/hooks/use-cached-session";
+
 export const Navbar = () => {
-  const { data: session, isPending: isLoading } = authClient.useSession();
+  const { data: session, isPending: isLoading } = useCachedSession();
   const scrolled = UseScrollTop();
   return (
     <div

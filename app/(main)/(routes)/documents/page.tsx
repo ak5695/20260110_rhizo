@@ -7,8 +7,10 @@ import { create } from "@/actions/documents";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
+import { useCachedSession } from "@/hooks/use-cached-session";
+
 export default function DocumentPage() {
-  const { data: session } = authClient.useSession();
+  const { data: session } = useCachedSession();
   const router = useRouter();
 
   const onCreate = () => {

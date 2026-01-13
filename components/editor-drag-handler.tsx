@@ -84,6 +84,21 @@ export const EditorDragHandler: React.FC<EditorDragHandlerProps> = ({
         blockType = blockElement.getAttribute("data-node-type") || "paragraph";
       }
 
+      // 【即时标记】保存选区范围信息，用于放下后恢复
+      // 保存选区的 DOM 上下文信息
+      const range = selection.getRangeAt(0);
+      const selectionInfo = {
+        blockId,
+        startOffset: range.startOffset,
+        endOffset: range.endOffset,
+        selectedText,
+        timestamp: Date.now()
+      };
+
+      // 存储到 sessionStorage，确保跨组件可访问
+      sessionStorage.setItem('pendingDragSelection', JSON.stringify(selectionInfo));
+      console.log("[EditorDragHandler] Saved selection info:", selectionInfo);
+
       // Determine source type based on block type or selection context
       let sourceType: DragSourceType = "text";
 
@@ -104,6 +119,8 @@ export const EditorDragHandler: React.FC<EditorDragHandlerProps> = ({
         metadata: {
           selectionLength: selectedText.length,
           blockType,
+          // 包含选区信息用于即时标记
+          selectionInfo: selectionInfo
         },
       });
 

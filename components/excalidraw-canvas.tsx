@@ -15,6 +15,9 @@ import { createCanvasBinding, getCanvasBindings } from "@/actions/canvas-binding
 import { Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigationStore, useElementTarget } from "@/store/use-navigation-store";
+import { useBindingStore } from "@/store/use-binding-store";
+import { canvasCache } from "@/lib/cache/canvas-cache";
+import { ConnectionPointsOverlay } from "@/components/canvas/connection-points-overlay";
 
 const Excalidraw = dynamic(
     () => import("@excalidraw/excalidraw").then((mod) => mod.Excalidraw),
@@ -72,75 +75,7 @@ interface Binding {
     // ... other fields
 }
 
-/**
- * Canvas Overlay Layer for displaying Binding Badges
- * Uses requestAnimationFrame for independent 60fps rendering without blocking Excalidraw
- */
-const CanvasBindingLayer = ({ excalidrawAPI, bindings }: { excalidrawAPI: any, bindings: any[] }) => {
-    const [overlayItems, setOverlayItems] = useState<{ id: string, x: number, y: number, label: string }[]>([]);
-    const rafRef = useRef<number | null>(null);
-
-    const updateOverlays = useCallback(() => {
-        if (!excalidrawAPI || bindings.length === 0) return;
-
-        const appState = excalidrawAPI.getAppState();
-        const elements = excalidrawAPI.getSceneElements();
-        const { scrollX, scrollY, zoom } = appState;
-
-        // Filter elements that are currently within the viewport (optimization)
-        // For simplicity, we calculate for all bound elements, but CSS handles clipping via overflow:hidden on container
-
-        const items = bindings.map(binding => {
-            const element = elements.find((el: any) => el.id === binding.elementId);
-            if (!element || element.isDeleted) return null;
-
-            // Calculate screen position
-            // ScreenX = (CanvasX + ScrollX) * Zoom
-            const screenX = (element.x + scrollX) * zoom.value;
-            const screenY = (element.y + scrollY) * zoom.value;
-
-            // Center horizontally
-            const centerX = screenX + (element.width * zoom.value) / 2;
-
-            return {
-                id: binding.id,
-                x: centerX,
-                y: screenY,
-                label: "LINKED"
-            };
-        }).filter(Boolean) as { id: string, x: number, y: number, label: string }[];
-
-        setOverlayItems(items);
-        rafRef.current = requestAnimationFrame(updateOverlays);
-    }, [excalidrawAPI, bindings]);
-
-    useEffect(() => {
-        rafRef.current = requestAnimationFrame(updateOverlays);
-        return () => {
-            if (rafRef.current) cancelAnimationFrame(rafRef.current);
-        };
-    }, [updateOverlays]);
-
-    if (overlayItems.length === 0) return null;
-
-    return (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden z-30">
-            {overlayItems.map(item => (
-                <div
-                    key={item.id}
-                    className="canvas-binding-badge"
-                    style={{
-                        left: item.x,
-                        top: item.y,
-                    }}
-                >
-                    <Link2 className="h-3 w-3" />
-                    {item.label}
-                </div>
-            ))}
-        </div>
-    );
-};
+// Note: CanvasBindingLayer removed - Excalidraw has native link indicators
 
 export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen, onToggleFullscreen }: ExcalidrawCanvasProps) => {
     const { resolvedTheme } = useTheme();
@@ -160,95 +95,127 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
     const lastSelectedIdRef = useRef<string | null>(null);
     // Removed viewport state to optimize performance as we no longer use HTML overlay
 
-    // 1. Initial Loading
-    useEffect(() => {
-        const loadCanvas = async () => {
-            if (!documentId) return;
+    // Track if initial load is complete to prevent server data from overwriting user edits
+    const initialLoadCompleteRef = useRef(false);
+    const localVersionRef = useRef(0);
 
-            setIsLoading(true);
+    // 1. Initial Loading - Cache-First Strategy for Instant Display
+    // CRITICAL: Only run once on mount, never re-run to avoid overwriting user edits
+    useEffect(() => {
+        if (!documentId) return;
+        if (initialLoadCompleteRef.current) return; // Already loaded, don't run again
+
+        const loadCanvas = async () => {
+            console.log('[Canvas] Starting initial load for:', documentId);
+
+            // 【即时加载】Step 1: 先从本地缓存加载（毫秒级）
+            let cacheLoaded = false;
+            try {
+                const cached = await canvasCache.get(documentId);
+                if (cached) {
+                    console.log('[Canvas] Instant load from cache:', cached.elements.length, 'elements, version:', cached.version);
+                    setCanvasId(cached.canvasId);
+                    setInitialElements(cached.elements);
+                    lastElementsRef.current = JSON.stringify(cached.elements);
+                    localVersionRef.current = cached.version || Date.now();
+
+                    const activeIds = new Set(
+                        cached.elements.filter((el: any) => !el.isDeleted).map((el: any) => el.id)
+                    );
+                    prevActiveElementsRef.current = activeIds;
+
+                    // 立即显示缓存内容
+                    setIsLoading(false);
+                    setIsLoaded(true);
+                    cacheLoaded = true;
+                }
+            } catch (err) {
+                console.warn('[Canvas] Cache read failed:', err);
+            }
+
+            // 【后台同步】Step 2: 从服务器获取数据
             try {
                 const result = await getOrCreateCanvas(documentId);
                 if (result.success && result.canvas) {
-                    setCanvasId(result.canvas.id);
-                    setInitialElements(result.elements || []);
+                    const serverElements = result.elements || [];
+                    const serverVersion = result.canvas.version || 0;
 
-                    // Store initial signature
-                    lastElementsRef.current = JSON.stringify(result.elements || []);
+                    // 如果缓存已加载且本地版本更新，不覆盖
+                    if (cacheLoaded && localVersionRef.current > serverVersion) {
+                        console.log('[Canvas] Local cache is newer, skipping server data. Local:', localVersionRef.current, 'Server:', serverVersion);
+                        setCanvasId(result.canvas.id); // 只更新 canvasId
+                    } else {
+                        // 服务器数据更新或无缓存，使用服务器数据
+                        console.log('[Canvas] Using server data:', serverElements.length, 'elements, version:', serverVersion);
+                        setCanvasId(result.canvas.id);
 
-                    // 【企业级】初始化prevActiveElementsRef，避免首次加载误报删除
-                    const activeIds = new Set(
-                        (result.elements || []).filter((el: any) => !el.isDeleted).map((el: any) => el.id)
-                    );
-                    prevActiveElementsRef.current = activeIds;
-                    console.log('[Canvas] Initialized with', activeIds.size, 'active elements');
+                        if (!cacheLoaded) {
+                            setInitialElements(serverElements);
+                            lastElementsRef.current = JSON.stringify(serverElements);
 
-                    // We'll set the viewport once API is ready
-                    if (excalidrawAPI && result.canvas) {
-                        excalidrawAPI.updateScene({
-                            appState: {
-                                scrollX: result.canvas.viewportX || 0,
-                                scrollY: result.canvas.viewportY || 0,
-                                zoom: { value: result.canvas.zoom || 1 }
-                            }
+                            const activeIds = new Set(
+                                serverElements.filter((el: any) => !el.isDeleted).map((el: any) => el.id)
+                            );
+                            prevActiveElementsRef.current = activeIds;
+                        }
+
+                        // 更新缓存
+                        canvasCache.set(documentId, {
+                            canvasId: result.canvas.id,
+                            elements: serverElements,
+                            viewport: {
+                                x: result.canvas.viewportX || 0,
+                                y: result.canvas.viewportY || 0,
+                                zoom: result.canvas.zoom || 1
+                            },
+                            version: serverVersion
                         });
+                        localVersionRef.current = serverVersion;
                     }
-                } else {
+                } else if (!cacheLoaded) {
                     toast.error(result.error || "Failed to load workspace");
                 }
             } catch (err) {
-                console.error("[Canvas] Loading error:", err);
-                toast.error("Network error while loading canvas");
+                console.error("[Canvas] Server sync error:", err);
+                if (!cacheLoaded) {
+                    toast.error("Network error - showing cached data");
+                }
             } finally {
                 setIsLoading(false);
                 setIsLoaded(true);
+                initialLoadCompleteRef.current = true;
+                console.log('[Canvas] Initial load complete');
             }
         };
 
         loadCanvas();
-    }, [documentId, excalidrawAPI]);
+    }, [documentId]); // ONLY depend on documentId, not excalidrawAPI or isLoaded
 
-    // 1.5 Load Bindings + Initialize ExistenceEngine (EAS)
+    // 1.5 Load Bindings + Initialize Client-side BindingStore (Optimistic UI)
+    const initializeBindingStore = useBindingStore(state => state.initialize);
+    const bindingStoreInitialized = useBindingStore(state => state.initialized);
+
     useEffect(() => {
         const loadBindings = async () => {
             if (canvasId) {
-                // 步骤1：初始化 ExistenceEngine（EAS核心）
-                const { initializeExistenceEngine, reconcileBindings } = await import('@/actions/canvas');
-                const initResult = await initializeExistenceEngine(canvasId);
-                if (initResult.success) {
-                    console.log('[Canvas] ExistenceEngine initialized');
-                } else {
-                    console.error('[Canvas] ExistenceEngine initialization failed:', initResult.error);
-                }
-
-                // 步骤2：和解修复不一致（自动修复高置信度问题）
-                const reconcileResult = await reconcileBindings(canvasId);
-                if (reconcileResult.success) {
-                    if (reconcileResult.autoFixed > 0) {
-                        toast.info(`Auto-fixed ${reconcileResult.autoFixed} inconsistencies`);
-                        console.log('[Canvas] Reconciliation:', reconcileResult);
-                    }
-                    if (reconcileResult.requiresReview > 0) {
-                        toast.warning(`${reconcileResult.requiresReview} bindings require review`);
-                    }
-                }
-
-                // 步骤3：加载活跃绑定（仅加载未删除的）
+                // Load bindings from server and initialize client-side store
                 const result = await getCanvasBindings(canvasId);
                 if (result.success) {
-                    // 过滤掉isElementDeleted=true的绑定
+                    // Filter out deleted element bindings
                     const activeBindings = (result.bindings || []).filter(b => !b.isElementDeleted);
+
+                    // Initialize client-side binding store for instant sync
+                    initializeBindingStore(canvasId, activeBindings);
+
+                    // Also update local state for overlay rendering
                     setBindings(activeBindings);
 
-                    console.log('[Canvas] Loaded', activeBindings.length, 'active bindings');
-
-                    if (result.bindings.length !== activeBindings.length) {
-                        console.warn('[Canvas] Filtered out', result.bindings.length - activeBindings.length, 'ghost bindings');
-                    }
+                    console.log('[Canvas] Loaded', activeBindings.length, 'bindings into client store');
                 }
             }
         };
         loadBindings();
-    }, [canvasId]);
+    }, [canvasId, initializeBindingStore]);
 
     // Use Zustand navigation store for cross-component navigation
     const elementTarget = useElementTarget();
@@ -306,7 +273,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
         clearElementTarget();
     }, [elementTarget, excalidrawAPI, clearElementTarget]);
 
-    // 2. Debounced Persistence
+    // 2. Debounced Persistence + Cache Update
     const debouncedSave = useCallback(
         debounce(async (cid: string, elements: readonly any[]) => {
             setSaveStatus("saving");
@@ -319,6 +286,25 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             }
 
             lastElementsRef.current = currentSig;
+
+            // 【即时缓存】同时更新本地缓存和版本
+            if (documentId && canvasId) {
+                const appState = excalidrawAPI?.getAppState();
+                const newVersion = Date.now();
+                localVersionRef.current = newVersion; // Update local version
+
+                canvasCache.set(documentId, {
+                    canvasId: cid,
+                    elements: [...elements],
+                    viewport: {
+                        x: appState?.scrollX || 0,
+                        y: appState?.scrollY || 0,
+                        zoom: appState?.zoom?.value || 1
+                    },
+                    version: newVersion
+                }).catch(err => console.warn('[Canvas] Cache update failed:', err));
+            }
+
             try {
                 // Save ALL elements (including deleted) to ensure state consistency
                 const res = await saveCanvasElements(cid, [...elements]);
@@ -333,7 +319,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
                 setSaveStatus("idle");
             }
         }, 800, { maxWait: 4000 }), // Enterprise tuning: 800ms debounce, 4s max wait
-        []
+        [documentId, canvasId, excalidrawAPI]
     );
 
     const debouncedViewportSave = useCallback(
@@ -356,50 +342,35 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
     }, [debouncedSave, debouncedViewportSave]);
 
 
-    // 【EAS】增量删除检测 + ExistenceEngine 状态转换
+    // 【Optimistic UI】增量删除检测 - 客户端即时更新
     const prevActiveElementsRef = useRef<Set<string>>(new Set());
+    const hideByElementIds = useBindingStore(state => state.hideByElementIds);
 
     const detectAndCleanupDeletedBindings = useCallback(
-        debounce(async (canvasId: string, currentElements: readonly any[]) => {
+        (currentElements: readonly any[]) => {
             const currentActiveIds = new Set(
                 currentElements.filter(el => !el.isDeleted).map(el => el.id)
             );
             const prevActiveIds = prevActiveElementsRef.current;
-
-            // DEBUG: 详细日志
-            console.log('[Canvas-EAS] Delete detection triggered');
-            console.log('[Canvas-EAS] Total elements:', currentElements.length);
-            console.log('[Canvas-EAS] Deleted elements:', currentElements.filter(el => el.isDeleted).length);
-            console.log('[Canvas-EAS] Previous active count:', prevActiveIds.size);
-            console.log('[Canvas-EAS] Current active count:', currentActiveIds.size);
 
             // 计算新删除的元素（增量检测）
             const newlyDeletedIds = Array.from(prevActiveIds).filter(
                 id => !currentActiveIds.has(id)
             );
 
-            console.log('[Canvas-EAS] Newly deleted IDs:', newlyDeletedIds);
-
             if (newlyDeletedIds.length > 0) {
                 console.log('[Canvas] Detected deleted elements:', newlyDeletedIds);
 
-                // 使用 ExistenceEngine 隐藏绑定（不硬删除）
-                const { hideBindingsByElementIds } = await import('@/actions/canvas');
-                const result = await hideBindingsByElementIds(canvasId, newlyDeletedIds);
+                // 【即时更新】使用客户端 BindingStore（无网络延迟）
+                hideByElementIds(newlyDeletedIds);
 
-                if (result.success && result.hiddenCount > 0) {
-                    console.log('[Canvas] Hid', result.hiddenCount, 'bindings via ExistenceEngine');
-                    // Events are automatically emitted by ExistenceEngine (binding:hidden)
-                    // Editor will listen to these events and apply CSS ghosting
-
-                    // 刷新绑定列表
-                    window.dispatchEvent(new Event('refresh-bindings'));
-                }
+                // 刷新绑定列表 UI
+                window.dispatchEvent(new Event('refresh-bindings'));
             }
 
             prevActiveElementsRef.current = currentActiveIds;
-        }, 500),
-        []
+        },
+        [hideByElementIds]
     );
 
     // Excalidraw onChange fires on EVERY event
@@ -411,8 +382,8 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             onChange([...elements], appState);
         }
 
-        // 【企业级】检测删除并立即清理绑定
-        detectAndCleanupDeletedBindings(canvasId, elements);
+        // 【即时同步】检测删除并立即更新客户端状态
+        detectAndCleanupDeletedBindings(elements);
 
         // Viewport tracking removed for performance (native Excalidraw links used instead)
 
@@ -693,7 +664,20 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             }
         });
 
-        // 3. Create Binding in database
+        // 【即时标记】立即通知 Editor 应用文本样式（不等待服务器）
+        if (payload.blockId) {
+            window.dispatchEvent(new CustomEvent("document:canvas-binding-success", {
+                detail: {
+                    elementId: rectId,
+                    blockId: payload.blockId,
+                    metadata: payload.metadata,
+                    optimistic: true // 标记为乐观更新
+                }
+            }));
+            console.log("[Canvas] Optimistic mark applied for block:", payload.blockId);
+        }
+
+        // 3. 后台异步持久化绑定（不阻塞UI）
         if (canvasId && payload.blockId) {
             createCanvasBinding({
                 canvasId,
@@ -706,23 +690,25 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
                 metadata: payload.metadata
             }).then(result => {
                 if (result.success && result.binding) {
+                    // Register with client-side BindingStore for instant tracking
+                    useBindingStore.getState().registerBinding(result.binding);
+
                     setBindings(prev => [...prev, result.binding]);
                     window.dispatchEvent(new CustomEvent("refresh-bindings"));
 
-                    // Notify Editor to Apply Text Style (Closing the Loop)
-                    window.dispatchEvent(new CustomEvent("document:canvas-binding-success", {
-                        detail: {
-                            elementId: rectId,
-                            blockId: payload.blockId,
-                            metadata: payload.metadata
-                        }
-                    }));
-
-                    toast.success("Linked to document");
+                    // 服务器确认成功
+                    console.log("[Canvas] Binding persisted to server:", result.binding.id);
+                } else {
+                    // 服务器失败 - 可选：回滚标记
+                    console.error("[Canvas] Failed to persist binding:", result.error);
+                    toast.error("Failed to save link, but mark is applied locally");
                 }
+            }).catch(err => {
+                console.error("[Canvas] Binding creation error:", err);
             });
         }
 
+        toast.success("Linked to document");
         console.log("[ExcalidrawCanvas] Created elements from drop:", { text: text.substring(0, 50) });
     }, [excalidrawAPI]);
 
@@ -749,17 +735,8 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
-            {/* Visual indication for drag and drop */}
-            {isDragOver && (
-                <div className="absolute inset-0 z-50 pointer-events-none flex items-center justify-center bg-rose-500/5 backdrop-blur-[2px]">
-                    <div className="bg-white dark:bg-gray-800 px-6 py-4 rounded-2xl shadow-2xl border-2 border-dashed border-rose-500 flex flex-col items-center gap-2 transform scale-110 transition-transform">
-                        <div className="w-12 h-12 bg-rose-500 rounded-full flex items-center justify-center text-white animation-bounce">
-                            <PlusCircle className="h-6 w-6" />
-                        </div>
-                        <p className="text-lg font-bold text-rose-600 dark:text-rose-400">Release to add to Canvas</p>
-                    </div>
-                </div>
-            )}
+            {/* Note: Drag overlay removed for cleaner UX */}
+
 
             <Excalidraw
                 excalidrawAPI={(api: any) => setExcalidrawAPI(api)}
@@ -784,8 +761,10 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
                 }}
             />
 
-            {/* 4. Canvas Binding Overlay Layer (HUD) */}
-            <CanvasBindingLayer excalidrawAPI={excalidrawAPI} bindings={bindings} />
+            {/* Note: Canvas Binding Layer removed - using Excalidraw's native link indicators */}
+
+            {/* 5. Connection Points Overlay (Canva-like) */}
+            <ConnectionPointsOverlay excalidrawAPI={excalidrawAPI} containerRef={containerRef} />
 
             {/* Status Indicator (Enterprise Grade) */}
             <div className="absolute top-36 left-4 z-50 pointer-events-none flex items-center gap-2 px-3 py-1.5 bg-white/90 dark:bg-[#1e1e1e]/90 backdrop-blur rounded-full shadow-sm text-xs font-medium border border-gray-200 dark:border-gray-700 transition-all duration-300 origin-left">

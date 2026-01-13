@@ -8,6 +8,7 @@ import { FileIcon } from "lucide-react";
 import useSWR from "swr";
 import { getSidebar } from "@/actions/documents";
 import { useDocumentStore } from "@/store/use-document-store";
+import { sidebarCache } from "@/lib/cache/sidebar-cache";
 
 interface DocumentListProps {
   parentDocumentId?: string;
@@ -63,21 +64,26 @@ export const DocumentList = ({
   const router = useRouter();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const onExpand = (documentId: string) => {
-    setExpanded((prevExpand) => ({
-      ...prevExpand,
-      [documentId]: !prevExpand[documentId],
-    }));
-  };
+  // 【即时加载】从内存缓存同步读取（零延迟）
+  const [cachedDocs, setCachedDocs] = useState<any[] | null>(() => {
+    // 同步读取内存缓存作为初始值
+    return sidebarCache.getSync(parentDocumentId || "root");
+  });
 
+  // 【后台同步】SWR 从服务器获取最新数据
   const { data: documents, mutate } = useSWR(
     ["documents", parentDocumentId],
     ([, id]) => getSidebar(id),
     {
       revalidateOnFocus: true,
       refreshInterval: 30000,
+      // 使用缓存作为 fallback
+      fallbackData: cachedDocs || undefined,
       onSuccess: (data) => {
         if (data && Array.isArray(data)) {
+          // 保存到缓存
+          sidebarCache.set(parentDocumentId || "root", data);
+
           // ⚡ Hyper-Speed Seeding: Pre-load all fetched docs into local cache & store
           const docStore = useDocumentStore.getState();
           import("@/lib/cache/document-cache").then(({ documentCache }) => {
@@ -100,21 +106,45 @@ export const DocumentList = ({
     }
   );
 
+  // 【异步缓存加载】如果同步缓存未命中，异步加载 IndexedDB
+  useEffect(() => {
+    if (!cachedDocs) {
+      sidebarCache.get(parentDocumentId || "root").then((cached) => {
+        if (cached && !documents) {
+          setCachedDocs(cached);
+          console.log("[DocumentList] Loaded from IndexedDB cache");
+        }
+      });
+    }
+  }, [parentDocumentId, cachedDocs, documents]);
+
+  const onExpand = (documentId: string) => {
+    setExpanded((prevExpand) => ({
+      ...prevExpand,
+      [documentId]: !prevExpand[documentId],
+    }));
+  };
+
   // Listen for document change events (create/delete) to trigger revalidation
   useEffect(() => {
     const handleDocumentsChanged = () => {
-      mutate(); // Revalidate the SWR cache immediately
+      // Invalidate cache and refetch
+      sidebarCache.invalidate(parentDocumentId || "root");
+      mutate();
     };
 
     window.addEventListener("documents-changed", handleDocumentsChanged);
     return () => window.removeEventListener("documents-changed", handleDocumentsChanged);
-  }, [mutate]);
+  }, [mutate, parentDocumentId]);
 
   const onRedirect = (documentId: string) => {
     router.push(`/documents/${documentId}`);
   };
 
-  if (documents === undefined) {
+  // 使用服务器数据或缓存数据
+  const displayDocs = documents || cachedDocs;
+
+  if (displayDocs === undefined || displayDocs === null) {
     return (
       <>
         <Item.Skeleton level={level} />
@@ -140,7 +170,7 @@ export const DocumentList = ({
       >
         No page inside
       </p>
-      {documents.map((document) => (
+      {displayDocs.map((document) => (
         <div key={document.id}>
           <DocumentItem
             document={document}
@@ -158,3 +188,4 @@ export const DocumentList = ({
     </>
   );
 };
+

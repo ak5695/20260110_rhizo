@@ -7,12 +7,14 @@ import { Navigation } from "@/components/main/navigation";
 import { SearchCommand } from "@/components/search-command";
 import React from "react";
 
+import { useCachedSession } from "@/hooks/use-cached-session";
+
 export default function MainLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { data: session, isPending: isLoading } = authClient.useSession();
+  const { data: session, isPending: isLoading } = useCachedSession();
 
   if (isLoading) {
     return (

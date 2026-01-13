@@ -533,11 +533,47 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     []
   );
 
+  // Track last edit time to prevent overwriting user changes with server data
+  const lastEditTimeRef = useRef<number>(0);
+  // Flag to ignore changes triggered by remote updates
+  const isRemoteUpdateRef = useRef(false);
+
   const editor = useCreateBlockNote({
     schema,
     initialContent: initialContent ? JSON.parse(initialContent) : undefined,
     uploadFile: handleUpload,
   });
+
+  // 1. useEffect for onChange removed - handled in BlockNoteView prop
+
+
+  // 2. Sync content from server/cache (Hydration)
+  useEffect(() => {
+    if (!editor || !initialContent) return;
+
+    // Don't overwrite if user has edited recently (within 5 seconds)
+    // This allows local edits to take precedence over potentially stale server data
+    if (Date.now() - lastEditTimeRef.current < 5000) {
+      return;
+    }
+
+    const currentJson = JSON.stringify(editor.document);
+
+    // Only update if content is actually different
+    if (currentJson !== initialContent) {
+      console.log("[Editor] Hydrating new content (Cache/Server update)");
+      try {
+        const newBlocks = JSON.parse(initialContent);
+
+        // Set flag to prevent this update from triggering onChange -> server save loop
+        isRemoteUpdateRef.current = true;
+
+        editor.replaceBlocks(editor.document, newBlocks);
+      } catch (e) {
+        console.error("[Editor] Failed to parse content:", e);
+      }
+    }
+  }, [editor, initialContent]);
 
   // Handle space key on empty line to open AI modal
   useEffect(() => {
@@ -589,22 +625,97 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
   }, [editor, showAiModal]);
 
   // Listen for Drag Check-in (Feedback Loop - Drag to Bind)
+  // 【即时标记】使用 sessionStorage 中保存的选区信息
   useEffect(() => {
     if (!editor) return;
 
     const handleCanvasBindingSuccess = (e: CustomEvent) => {
-      const { elementId, blockId } = e.detail;
+      const { elementId, blockId, optimistic } = e.detail;
 
-      // Restore focus to editor which often restores selection
-      editor.focus();
+      console.log("[Editor] Canvas binding success event received:", { elementId, blockId, optimistic });
 
-      // Check if we are on the correct block (sanity check)
-      // If user selected text, dragged, then dropped, selection SHOULD be preserved.
-      const selection = editor.getSelection();
-      if (selection && selection.blocks.length > 0 && selection.blocks[0].id === blockId) {
-        editor.addStyles({ canvasLink: elementId });
-        toast.success("Text bound to Canvas Node!");
+      // 从 sessionStorage 获取保存的选区信息
+      const savedSelectionStr = sessionStorage.getItem('pendingDragSelection');
+      if (!savedSelectionStr) {
+        console.warn("[Editor] No saved selection found in sessionStorage");
+        return;
       }
+
+      let savedSelection: { blockId: string; selectedText: string; timestamp: number } | null = null;
+      try {
+        savedSelection = JSON.parse(savedSelectionStr);
+      } catch (e) {
+        console.error("[Editor] Failed to parse saved selection:", e);
+        return;
+      }
+
+      // 验证选区信息的有效性（5秒内有效）
+      const isValid = savedSelection &&
+        savedSelection.blockId === blockId &&
+        (Date.now() - savedSelection.timestamp) < 5000;
+
+      if (!isValid) {
+        console.warn("[Editor] Saved selection is invalid or expired");
+        sessionStorage.removeItem('pendingDragSelection');
+        return;
+      }
+
+      console.log("[Editor] Using saved selection:", savedSelection);
+
+      // 【即时应用样式】使用 BlockNote API
+      try {
+        // 1. 获取目标 block
+        const block = editor.getBlock(blockId);
+        if (!block) {
+          console.warn("[Editor] Block not found:", blockId);
+          return;
+        }
+
+        // 2. 在 block 内容中查找匹配的文本并应用 canvasLink 样式
+        // BlockNote 的 content 是 InlineContent 数组
+        if (block.content && Array.isArray(block.content)) {
+          const newContent = block.content.map((item: any) => {
+            if (item.type === 'text' && item.text) {
+              // 检查是否包含选中的文本
+              const idx = item.text.indexOf(savedSelection!.selectedText);
+              if (idx !== -1) {
+                // 找到匹配，需要拆分并应用样式
+                const before = item.text.substring(0, idx);
+                const match = savedSelection!.selectedText;
+                const after = item.text.substring(idx + match.length);
+
+                const result: any[] = [];
+
+                if (before) {
+                  result.push({ type: 'text', text: before, styles: item.styles || {} });
+                }
+
+                result.push({
+                  type: 'text',
+                  text: match,
+                  styles: { ...(item.styles || {}), canvasLink: elementId }
+                });
+
+                if (after) {
+                  result.push({ type: 'text', text: after, styles: item.styles || {} });
+                }
+
+                return result;
+              }
+            }
+            return [item];
+          }).flat();
+
+          // 3. 更新 block 内容
+          editor.updateBlock(block, { content: newContent });
+          console.log("[Editor] Applied canvasLink style to text:", savedSelection.selectedText);
+        }
+      } catch (err) {
+        console.error("[Editor] Failed to apply canvasLink style:", err);
+      }
+
+      // 清理 sessionStorage
+      sessionStorage.removeItem('pendingDragSelection');
     };
 
     window.addEventListener("document:canvas-binding-success", handleCanvasBindingSuccess as EventListener);
@@ -1120,6 +1231,14 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
         editable={editable}
         editor={editor}
         onChange={() => {
+          // Track last edit time to prevent overwriting user changes with server data
+          // And ignore changes triggered by remote updates
+          if (isRemoteUpdateRef.current) {
+            isRemoteUpdateRef.current = false;
+            return;
+          }
+          lastEditTimeRef.current = Date.now();
+
           onChange(JSON.stringify(editor.document));
           // Expose document for outline
           if (onDocumentChange) {

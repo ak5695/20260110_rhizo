@@ -468,6 +468,45 @@ export class ExistenceEngine extends EventEmitter {
     }
 
     /**
+     * Register a new binding in the engine (called after creation)
+     * Updates internal maps and cache to reflect the new state
+     */
+    public async registerBinding(binding: any): Promise<void> {
+        console.log('[ExistenceEngine] Registering new binding:', binding.id);
+
+        if (this.currentCanvasId !== binding.canvasId) {
+            console.log('[ExistenceEngine] Skipping registration for non-active canvas binding');
+            return;
+        }
+
+        const status = (binding.currentStatus || 'visible') as BindingStatus;
+
+        this.statusMap.set(binding.id, status);
+        this.elementIdMap.set(binding.elementId, binding.id);
+
+        if (binding.blockId) {
+            const blockIdSet = this.blockIdMap.get(binding.blockId) || new Set();
+            blockIdSet.add(binding.id);
+            this.blockIdMap.set(binding.blockId, blockIdSet);
+        }
+
+        // Full cache entry
+        this.bindingCache.set(binding.id, {
+            id: binding.id,
+            status,
+            elementId: binding.elementId,
+            canvasId: binding.canvasId,
+            blockId: binding.blockId || '',
+            documentId: binding.documentId
+        });
+
+        // Update DB Cache
+        await this.updateCache(binding.id, status);
+
+        console.log('[ExistenceEngine] Registered binding:', binding.id);
+    }
+
+    /**
      * Get status of a binding (O(1))
      */
     public getStatus(bindingId: string): BindingStatus | undefined {
