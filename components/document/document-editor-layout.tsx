@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
+import debounce from "lodash.debounce";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,23 @@ export const DocumentEditorLayout = ({
 }: DocumentEditorLayoutProps) => {
     // UI State
     const [editorDocument, setEditorDocument] = useState<any>(null);
+
+    // Reset outline when document changes to avoid stale data
+    useEffect(() => {
+        setEditorDocument(null);
+    }, [documentId]);
+
+    // Debounce outline updates to improve performance
+    const debouncedSetEditorDocument = useMemo(
+        () => debounce((doc: any) => setEditorDocument(doc), 1000),
+        []
+    );
+
+    useEffect(() => {
+        return () => {
+            debouncedSetEditorDocument.cancel();
+        };
+    }, [debouncedSetEditorDocument]);
 
     // Layout Store
     const isCanvasOpen = useCanvasOpen();
@@ -94,47 +112,48 @@ export const DocumentEditorLayout = ({
                             />
                         </div>
 
-                        {/* Content Scroll Area */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-                            <div className="pb-40">
-                                <Cover url={document.coverImage} />
-                                <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
-                                    <Toolbar initialData={document} />
-                                    <Editor
-                                        onChange={onChange}
-                                        initialContent={document.content}
-                                        userId={document.userId}
-                                        documentId={documentId}
-                                        onDocumentChange={setEditorDocument}
-                                    />
+                        {/* Relative Container for Content AND Outline (Below Navbar) */}
+                        <div className="flex-1 relative overflow-hidden">
+                            {/* Content Scroll Area */}
+                            <div className="h-full overflow-y-auto custom-scrollbar">
+                                <div className="pb-40">
+                                    <Cover url={document.coverImage} />
+                                    <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
+                                        <Toolbar initialData={document} />
+                                        <Editor
+                                            onChange={onChange}
+                                            initialContent={document.content}
+                                            userId={document.userId}
+                                            documentId={documentId}
+                                            onDocumentChange={debouncedSetEditorDocument}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
-
-                        </div>
-
-                        {/* Outline Drawer - Sliding from Right */}
-                        <div
-                            className={cn(
-                                "absolute top-0 right-0 bottom-0 w-80 bg-background/80 backdrop-blur-xl border-l border-border/50 shadow-2xl z-[60]",
-                                "transition-transform duration-300 ease-in-out will-change-transform",
-                                isOutlineOpen ? "translate-x-0" : "translate-x-full"
-                            )}
-                        >
-                            <DocumentOutline
-                                editorDocument={editorDocument}
-                                className="h-full overflow-y-auto custom-scrollbar"
-                                onClose={toggleOutline}
-                            />
-                        </div>
-
-                        {/* Backdrop for closing */}
-                        {isOutlineOpen && (
+                            {/* Outline Drawer - Sliding from Right (Inside Relative Container) */}
                             <div
-                                className="absolute inset-0 z-[55] bg-transparent animate-in fade-in duration-300"
-                                onClick={toggleOutline}
-                            />
-                        )}
+                                className={cn(
+                                    "absolute top-0 right-0 bottom-0 w-80 bg-background/80 backdrop-blur-xl border-l border-border/50 z-[60]",
+                                    "transition-transform duration-300 ease-in-out will-change-transform",
+                                    isOutlineOpen ? "translate-x-0" : "translate-x-full"
+                                )}
+                            >
+                                <DocumentOutline
+                                    editorDocument={editorDocument}
+                                    className="h-full overflow-y-auto custom-scrollbar"
+                                    onClose={toggleOutline}
+                                />
+                            </div>
+
+                            {/* Backdrop for closing */}
+                            {isOutlineOpen && (
+                                <div
+                                    className="absolute inset-0 z-[55] bg-transparent animate-in fade-in duration-300"
+                                    onClick={toggleOutline}
+                                />
+                            )}
+                        </div>
                     </div>
                 </Panel>
 
