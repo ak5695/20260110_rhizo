@@ -467,18 +467,8 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
         // Add elements to Excalidraw
         // Note: For newer Excalidraw, it's safer to let it handle indexing.
         // We ensure rectangle comes before text in the array.
-        const currentElements = excalidrawAPI.getSceneElements();
-        excalidrawAPI.updateScene({
-            elements: [...currentElements, rectangle, textElement],
-            appState: {
-                ...excalidrawAPI.getAppState(),
-                selectedElementIds: {
-                    [rectId]: true,
-                }
-            }
-        });
-
         // 【即时标记】立即通知 Editor 应用文本样式（不等待服务器）
+        // 移至 updateScene 之前以消除渲染延迟
         if (payload.blockId) {
             window.dispatchEvent(new CustomEvent("document:canvas-binding-success", {
                 detail: {
@@ -490,6 +480,19 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
             }));
             console.log("[Canvas] Optimistic mark applied for block:", payload.blockId);
         }
+
+        const currentElements = excalidrawAPI.getSceneElements();
+        excalidrawAPI.updateScene({
+            elements: [...currentElements, rectangle, textElement],
+            appState: {
+                ...excalidrawAPI.getAppState(),
+                selectedElementIds: {
+                    [rectId]: true,
+                }
+            }
+        });
+
+
 
         // 3. 后台异步持久化绑定（不阻塞UI）
         if (canvasId && payload.blockId) {
