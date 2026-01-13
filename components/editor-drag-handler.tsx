@@ -61,7 +61,8 @@ export const EditorDragHandler: React.FC<EditorDragHandlerProps> = ({
     };
 
     const handleDragStart = (e: DragEvent) => {
-      if (!isDraggingRef.current) return;
+      // Remove restriction: Allow normal text dragging to trigger logic
+      // if (!isDraggingRef.current) return;
 
       const selection = window.getSelection();
       if (!selection || selection.isCollapsed) return;
