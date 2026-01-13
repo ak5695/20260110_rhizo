@@ -14,13 +14,14 @@ import { useEffect } from "react";
 import { useSidebarStore, useSidebarCollapsed } from "@/store/use-sidebar-store";
 
 interface NavbarProps {
+  initialData?: any;
   isCanvasOpen?: boolean;
   onToggleCanvas?: () => void;
   isOutlineOpen?: boolean;
   onToggleOutline?: () => void;
 }
 
-export const Navbar = ({ isCanvasOpen, onToggleCanvas, isOutlineOpen, onToggleOutline }: NavbarProps) => {
+export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpen, onToggleOutline }: NavbarProps) => {
   const params = useParams();
 
   // Use Zustand store for sidebar state (no more window events!)
@@ -32,6 +33,7 @@ export const Navbar = ({ isCanvasOpen, onToggleCanvas, isOutlineOpen, onToggleOu
     ([, id]) => getById(id as string),
     {
       revalidateOnFocus: true,
+      fallbackData: initialData
     }
   );
 
