@@ -4,20 +4,18 @@ import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import "@excalidraw/excalidraw/index.css";
 import { useTheme } from "next-themes";
-import { Maximize, Minimize, AlertCircle, Loader2, PlusCircle, Cloud, Check } from "lucide-react";
+import { Maximize, Minimize, Loader2 } from "lucide-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { DRAG_MIME_TYPE } from "@/lib/canvas/drag-drop-types";
 import { dragDropBridge } from "@/lib/canvas/drag-drop-bridge";
 import { v4 as uuidv4 } from "uuid";
-import debounce from "lodash.debounce";
-import { getOrCreateCanvas, saveCanvasElements, updateCanvasViewport } from "@/actions/canvas";
 import { createCanvasBinding, getCanvasBindings } from "@/actions/canvas-bindings";
-import { Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigationStore, useElementTarget } from "@/store/use-navigation-store";
 import { useBindingStore } from "@/store/use-binding-store";
-import { canvasCache } from "@/lib/cache/canvas-cache";
 import { ConnectionPointsOverlay } from "@/components/canvas/connection-points-overlay";
+import { useCanvasSync } from "@/hooks/use-canvas-sync";
+import { CanvasStatusIndicator } from "@/components/canvas/canvas-status-indicator";
 
 const Excalidraw = dynamic(
     () => import("@excalidraw/excalidraw").then((mod) => mod.Excalidraw),
@@ -38,35 +36,9 @@ interface ExcalidrawCanvasProps {
     documentId: string;
     className?: string;
     onChange?: (elements: readonly any[], appState: any) => void;
-    isFullscreen?: boolean;
-    onToggleFullscreen?: () => void;
 }
 
-const ToolbarPortal = ({ isFullscreen, onToggle }: { isFullscreen?: boolean; onToggle?: () => void }) => {
-    if (!onToggle) return null;
 
-    return (
-        <button
-            className="flex items-center justify-center rounded-lg transition-all transform hover:scale-105 pointer-events-auto bg-white dark:bg-[#232329] text-gray-900 dark:text-[#ced4da] shadow-lg border border-gray-200 dark:border-white/10 hover:border-rose-500/50"
-            style={{
-                position: "absolute",
-                top: "5rem",
-                left: "1rem",
-                width: "2.5rem",
-                height: "2.5rem",
-                zIndex: 50,
-            }}
-            onClick={onToggle}
-            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-        >
-            {isFullscreen ? (
-                <Minimize className="h-5 w-5" />
-            ) : (
-                <Maximize className="h-5 w-5" />
-            )}
-        </button>
-    );
-};
 
 interface Binding {
     id: string;
@@ -77,119 +49,27 @@ interface Binding {
 
 // Note: CanvasBindingLayer removed - Excalidraw has native link indicators
 
-export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen, onToggleFullscreen }: ExcalidrawCanvasProps) => {
+export const ExcalidrawCanvas = ({ documentId, className, onChange }: ExcalidrawCanvasProps) => {
     const { resolvedTheme } = useTheme();
     const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+
+    // Use custom hook for canvas sync
+    const {
+        canvasId,
+        isLoaded,
+        isLoading,
+        initialElements,
+        saveStatus,
+        syncElements,
+        syncViewport
+    } = useCanvasSync(documentId, excalidrawAPI);
+
     const [isDragOver, setIsDragOver] = useState(false);
-    const [canvasId, setCanvasId] = useState<string | null>(null);
-    const [isLoaded, setIsLoaded] = useState(false);
-    const [initialElements, setInitialElements] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [bindings, setBindings] = useState<any[]>([]);
-    const [saveStatus, setSaveStatus] = useState<"idle" | "pending" | "saving">("idle");
 
-    // Track state versions to avoid redundant saves
-    const lastElementsRef = useRef<string>("");
-    const lastViewportRef = useRef<string>("");
+    // Selection tracking for bi-directional link navigation
     const lastSelectedIdRef = useRef<string | null>(null);
-    // Removed viewport state to optimize performance as we no longer use HTML overlay
-
-    // Track if initial load is complete to prevent server data from overwriting user edits
-    const initialLoadCompleteRef = useRef(false);
-    const localVersionRef = useRef(0);
-
-    // 1. Initial Loading - Cache-First Strategy for Instant Display
-    // CRITICAL: Only run once on mount, never re-run to avoid overwriting user edits
-    useEffect(() => {
-        if (!documentId) return;
-        if (initialLoadCompleteRef.current) return; // Already loaded, don't run again
-
-        const loadCanvas = async () => {
-            console.log('[Canvas] Starting initial load for:', documentId);
-
-            // 【即时加载】Step 1: 先从本地缓存加载（毫秒级）
-            let cacheLoaded = false;
-            try {
-                const cached = await canvasCache.get(documentId);
-                if (cached) {
-                    console.log('[Canvas] Instant load from cache:', cached.elements.length, 'elements, version:', cached.version);
-                    setCanvasId(cached.canvasId);
-                    setInitialElements(cached.elements);
-                    lastElementsRef.current = JSON.stringify(cached.elements);
-                    localVersionRef.current = cached.version || Date.now();
-
-                    const activeIds = new Set(
-                        cached.elements.filter((el: any) => !el.isDeleted).map((el: any) => el.id)
-                    );
-                    prevActiveElementsRef.current = activeIds;
-
-                    // 立即显示缓存内容
-                    setIsLoading(false);
-                    setIsLoaded(true);
-                    cacheLoaded = true;
-                }
-            } catch (err) {
-                console.warn('[Canvas] Cache read failed:', err);
-            }
-
-            // 【后台同步】Step 2: 从服务器获取数据
-            try {
-                const result = await getOrCreateCanvas(documentId);
-                if (result.success && result.canvas) {
-                    const serverElements = result.elements || [];
-                    const serverVersion = result.canvas.version || 0;
-
-                    // 如果缓存已加载且本地版本更新，不覆盖
-                    if (cacheLoaded && localVersionRef.current > serverVersion) {
-                        console.log('[Canvas] Local cache is newer, skipping server data. Local:', localVersionRef.current, 'Server:', serverVersion);
-                        setCanvasId(result.canvas.id); // 只更新 canvasId
-                    } else {
-                        // 服务器数据更新或无缓存，使用服务器数据
-                        console.log('[Canvas] Using server data:', serverElements.length, 'elements, version:', serverVersion);
-                        setCanvasId(result.canvas.id);
-
-                        if (!cacheLoaded) {
-                            setInitialElements(serverElements);
-                            lastElementsRef.current = JSON.stringify(serverElements);
-
-                            const activeIds = new Set(
-                                serverElements.filter((el: any) => !el.isDeleted).map((el: any) => el.id)
-                            );
-                            prevActiveElementsRef.current = activeIds;
-                        }
-
-                        // 更新缓存
-                        canvasCache.set(documentId, {
-                            canvasId: result.canvas.id,
-                            elements: serverElements,
-                            viewport: {
-                                x: result.canvas.viewportX || 0,
-                                y: result.canvas.viewportY || 0,
-                                zoom: result.canvas.zoom || 1
-                            },
-                            version: serverVersion
-                        });
-                        localVersionRef.current = serverVersion;
-                    }
-                } else if (!cacheLoaded) {
-                    toast.error(result.error || "Failed to load workspace");
-                }
-            } catch (err) {
-                console.error("[Canvas] Server sync error:", err);
-                if (!cacheLoaded) {
-                    toast.error("Network error - showing cached data");
-                }
-            } finally {
-                setIsLoading(false);
-                setIsLoaded(true);
-                initialLoadCompleteRef.current = true;
-                console.log('[Canvas] Initial load complete');
-            }
-        };
-
-        loadCanvas();
-    }, [documentId]); // ONLY depend on documentId, not excalidrawAPI or isLoaded
 
     // 1.5 Load Bindings + Initialize Client-side BindingStore (Optimistic UI)
     const initializeBindingStore = useBindingStore(state => state.initialize);
@@ -273,73 +153,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
         clearElementTarget();
     }, [elementTarget, excalidrawAPI, clearElementTarget]);
 
-    // 2. Debounced Persistence + Cache Update
-    const debouncedSave = useCallback(
-        debounce(async (cid: string, elements: readonly any[]) => {
-            setSaveStatus("saving");
-            const elementsToSave = elements.filter(el => !el.isDeleted);
-            const currentSig = JSON.stringify(elementsToSave);
 
-            if (currentSig === lastElementsRef.current) {
-                setSaveStatus("idle");
-                return;
-            }
-
-            lastElementsRef.current = currentSig;
-
-            // 【即时缓存】同时更新本地缓存和版本
-            if (documentId && canvasId) {
-                const appState = excalidrawAPI?.getAppState();
-                const newVersion = Date.now();
-                localVersionRef.current = newVersion; // Update local version
-
-                canvasCache.set(documentId, {
-                    canvasId: cid,
-                    elements: [...elements],
-                    viewport: {
-                        x: appState?.scrollX || 0,
-                        y: appState?.scrollY || 0,
-                        zoom: appState?.zoom?.value || 1
-                    },
-                    version: newVersion
-                }).catch(err => console.warn('[Canvas] Cache update failed:', err));
-            }
-
-            try {
-                // Save ALL elements (including deleted) to ensure state consistency
-                const res = await saveCanvasElements(cid, [...elements]);
-                if (!res.success) {
-                    console.error("[Canvas] Failed to save elements:", res.error);
-                    toast.error("Failed to auto-save canvas");
-                }
-            } catch (err) {
-                console.error("[Canvas] Failed to save elements - exception:", err);
-                toast.error("Failed to auto-save canvas");
-            } finally {
-                setSaveStatus("idle");
-            }
-        }, 800, { maxWait: 4000 }), // Enterprise tuning: 800ms debounce, 4s max wait
-        [documentId, canvasId, excalidrawAPI]
-    );
-
-    const debouncedViewportSave = useCallback(
-        debounce(async (cid: string, viewport: any) => {
-            const currentSig = JSON.stringify(viewport);
-            if (currentSig === lastViewportRef.current) return;
-
-            lastViewportRef.current = currentSig;
-            await updateCanvasViewport(cid, viewport);
-        }, 3000),
-        []
-    );
-
-    // Cleanup flush on unmount to prevent data loss
-    useEffect(() => {
-        return () => {
-            debouncedSave.flush();
-            debouncedViewportSave.flush();
-        };
-    }, [debouncedSave, debouncedViewportSave]);
 
 
     // 【Optimistic UI】增量删除检测 - 客户端即时更新
@@ -422,10 +236,10 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
         // ============================================================================
 
         // Save the ORIGINAL elements as-is, preserving Excalidraw's ordering
-        debouncedSave(canvasId, [...elements]);
+        syncElements(canvasId, [...elements]);
 
         // Save viewport
-        debouncedViewportSave(canvasId, {
+        syncViewport(canvasId, {
             x: appState.scrollX,
             y: appState.scrollY,
             zoom: appState.zoom.value
@@ -771,27 +585,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
 
             {/* Status Indicator (Enterprise Grade) */}
             {/* Status Indicator (Enterprise Grade) */}
-            <div className="absolute top-36 left-4 z-50 pointer-events-none flex items-center gap-2 px-3 py-1.5 bg-white/90 dark:bg-[#1e1e1e]/90 backdrop-blur rounded-full shadow-sm text-xs font-medium border border-gray-200 dark:border-gray-700 transition-all duration-300 origin-left">
-                {saveStatus === "saving" && (
-                    <>
-                        <Loader2 className="w-3 h-3 animate-spin text-orange-500" />
-                        <span className="text-orange-600 dark:text-orange-400">Saving...</span>
-                    </>
-                )}
-                {saveStatus === "idle" && (
-                    <>
-                        <Cloud className="w-3 h-3 text-gray-400" />
-                        <Check className="w-2.5 h-2.5 text-green-500 -ml-1" />
-                        <span className="text-gray-500 dark:text-gray-400">Saved</span>
-                    </>
-                )}
-                {saveStatus === "pending" && (
-                    <>
-                        <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-                        <span className="text-gray-500 dark:text-gray-400">Changed</span>
-                    </>
-                )}
-            </div>
+            <CanvasStatusIndicator status={saveStatus} />
         </div>
     );
 };
