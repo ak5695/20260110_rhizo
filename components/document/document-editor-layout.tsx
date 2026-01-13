@@ -130,7 +130,7 @@ export const DocumentEditorLayout = ({
                         {/* Backdrop for closing */}
                         {isOutlineOpen && (
                             <div
-                                className="absolute inset-0 z-[55] bg-background/20 backdrop-blur-[2px] animate-in fade-in duration-300"
+                                className="absolute inset-0 z-[55] bg-transparent animate-in fade-in duration-300"
                                 onClick={toggleOutline}
                             />
                         )}
