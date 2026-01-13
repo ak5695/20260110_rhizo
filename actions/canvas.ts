@@ -383,3 +383,144 @@ export async function clearCanvas(canvasId: string) {
     return { success: false, error: "Failed to clear canvas" };
   }
 }
+
+/**
+ * ============================================================================
+ * Existence Arbitration System (EAS) - Server Actions
+ * ============================================================================
+ */
+
+/**
+ * Hide bindings (soft delete via ExistenceEngine)
+ * Uses EAS to transition bindings to 'hidden' state
+ */
+export async function hideBindings(bindingIds: string[], userId?: string) {
+  try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+
+    if (!session?.user) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const { existenceEngine } = await import('@/lib/existence-engine');
+    await existenceEngine.hideMany(bindingIds, userId || session.user.id);
+
+    return { success: true, count: bindingIds.length };
+  } catch (error) {
+    console.error("[hideBindings] Error:", error);
+    return { success: false, error: "Failed to hide bindings" };
+  }
+}
+
+/**
+ * Show bindings (restore to visible via ExistenceEngine)
+ * Uses EAS to transition bindings to 'visible' state
+ */
+export async function showBindings(bindingIds: string[], userId?: string) {
+  try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+
+    if (!session?.user) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const { existenceEngine } = await import('@/lib/existence-engine');
+    await existenceEngine.showMany(bindingIds, userId || session.user.id);
+
+    return { success: true, count: bindingIds.length };
+  } catch (error) {
+    console.error("[showBindings] Error:", error);
+    return { success: false, error: "Failed to show bindings" };
+  }
+}
+
+/**
+ * Reconcile bindings (detect and fix inconsistencies)
+ * Automatically repairs high-confidence issues
+ */
+export async function reconcileBindings(canvasId: string) {
+  try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+
+    if (!session?.user) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const { existenceEngine } = await import('@/lib/existence-engine');
+    const result = await existenceEngine.reconcile(canvasId, true);
+
+    return {
+      success: true,
+      autoFixed: result.autoFixed,
+      requiresReview: result.requiresHumanReview,
+      inconsistencies: result.inconsistencies
+    };
+  } catch (error) {
+    console.error("[reconcileBindings] Error:", error);
+    return { success: false, error: "Failed to reconcile bindings" };
+  }
+}
+
+/**
+ * Approve a pending binding (human arbitration)
+ * Transitions binding from 'pending' to 'visible'
+ */
+export async function approveBinding(bindingId: string, userId: string) {
+  try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+
+    if (!session?.user) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    // Security: Verify userId matches session
+    if (session.user.id !== userId) {
+      return { success: false, error: "Unauthorized: userId mismatch" };
+    }
+
+    const { existenceEngine } = await import('@/lib/existence-engine');
+    await existenceEngine.approve(bindingId, userId);
+
+    return { success: true };
+  } catch (error) {
+    console.error("[approveBinding] Error:", error);
+    return { success: false, error: "Failed to approve binding" };
+  }
+}
+
+/**
+ * Reject a pending binding (human arbitration)
+ * Transitions binding from 'pending' to 'deleted'
+ */
+export async function rejectBinding(bindingId: string, userId: string, reason: string) {
+  try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+
+    if (!session?.user) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    // Security: Verify userId matches session
+    if (session.user.id !== userId) {
+      return { success: false, error: "Unauthorized: userId mismatch" };
+    }
+
+    const { existenceEngine } = await import('@/lib/existence-engine');
+    await existenceEngine.reject(bindingId, userId, reason);
+
+    return { success: true };
+  } catch (error) {
+    console.error("[rejectBinding] Error:", error);
+    return { success: false, error: "Failed to reject binding" };
+  }
+}

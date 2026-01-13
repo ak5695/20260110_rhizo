@@ -321,3 +321,76 @@ body,
 .animate-modal-enter {
   animation: spring-modal-enter 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
+
+/* ============================================================================
+   Existence Arbitration System (EAS) - Binding State Styles
+   ============================================================================ */
+
+/**
+ * Binding 隐藏状态 (hidden/deleted)
+ * 使用 CSS ghosting 而非 DOM 操作，保证可恢复性
+ */
+.canvas-bound-text.is-deleted {
+  text-decoration: line-through;
+  opacity: 0.4;
+  color: #999;
+  transition: opacity 0.2s ease, color 0.2s ease;
+  pointer-events: none; /* 禁用交互 */
+}
+
+.dark .canvas-bound-text.is-deleted {
+  color: #666;
+}
+
+/**
+ * Binding 待审核状态 (pending)
+ * 需要人类裁决的绑定
+ */
+.canvas-bound-text.is-pending {
+  background: linear-gradient(to right, #fbbf24, #f59e0b);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: pulse-binding 2s ease-in-out infinite;
+  cursor: help;
+}
+
+.canvas-bound-text.is-pending::before {
+  content: "⚖️ ";
+  color: #f59e0b;
+  background: none;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+}
+
+/**
+ * Pulse animation for pending bindings
+ */
+@keyframes pulse-binding {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/**
+ * Binding 批准状态 (approved)
+ * 短暂高亮，表示已批准
+ */
+.canvas-bound-text.is-approved {
+  background-color: rgba(34, 197, 94, 0.2);
+  border-radius: 3px;
+  transition: background-color 0.3s ease;
+}
+
+/**
+ * Binding 拒绝状态 (rejected)
+ * 短暂高亮，表示已拒绝
+ */
+.canvas-bound-text.is-rejected {
+  background-color: rgba(239, 68, 68, 0.2);
+  border-radius: 3px;
+  transition: background-color 0.3s ease;
+}

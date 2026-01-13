@@ -709,69 +709,50 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     return () => window.removeEventListener("refresh-bindings", handleRefresh);
   }, [documentId]);
 
-  // 【企业级】监听Canvas元素删除事件，彻底移除绑定标记
+  // 【EAS】监听绑定状态变更事件，使用CSS Ghosting（非破坏性）
   useEffect(() => {
-    const handleElementDeleted = (e: CustomEvent) => {
-      const { elementIds, deletedBindings } = e.detail;
-      console.log('[Editor] Elements deleted from Canvas, removing bindings:', elementIds);
+    const handleBindingHidden = (e: CustomEvent) => {
+      const { bindingId, elementId } = e.detail;
+      console.log('[Editor] Binding hidden:', bindingId, elementId);
 
-      if (!elementIds || !Array.isArray(elementIds)) return;
+      // 从 state 移除（UI不再显示为活跃）
+      setBindings(prev => prev.filter(b => b.id !== bindingId));
 
-      // 1. 从bindings state中移除已删除的绑定
-      setBindings(prev => prev.filter(b => !elementIds.includes(b.elementId)));
-
-      // 2. 彻底移除所有UI标记
-      elementIds.forEach((elementId: string) => {
-        // Remove overlay markers
-        const overlayMarkers = document.querySelectorAll(`[data-element-id="${elementId}"]`);
-        overlayMarkers.forEach(marker => {
-          console.log('[Editor] Removing overlay marker for', elementId);
-          marker.remove();
-        });
-
-        // Remove link indicators
-        const linkIndicators = document.querySelectorAll(`.link-indicator[data-target="${elementId}"]`);
-        linkIndicators.forEach(indicator => {
-          console.log('[Editor] Removing link indicator for', elementId);
-          indicator.remove();
-        });
-
-        // Remove canvasLink style via BlockNote API
-        const boundTexts = document.querySelectorAll(`.canvas-bound-text[data-canvas-link="${elementId}"]`);
-        if (boundTexts.length > 0 && editor) {
-          try {
-            const blocks = editor.document;
-            blocks.forEach((block: any) => {
-              if (block.content && Array.isArray(block.content)) {
-                const hasBinding = block.content.some((content: any) =>
-                  content.styles?.canvasLink === elementId
-                );
-
-                if (hasBinding) {
-                  const newContent = block.content.map((c: any) => {
-                    if (c.styles?.canvasLink === elementId) {
-                      const { canvasLink, ...restStyles } = c.styles;
-                      return { ...c, styles: restStyles };
-                    }
-                    return c;
-                  });
-                  editor.updateBlock(block.id, { content: newContent });
-                  console.log('[Editor] Removed canvasLink style from block', block.id);
-                }
-              }
-            });
-          } catch (err) {
-            console.error('[Editor] Error removing canvasLink style:', err);
-          }
-        }
+      // 应用 CSS ghosting（非破坏性，可恢复）
+      const boundTexts = document.querySelectorAll(
+        `.canvas-bound-text[data-canvas-link="${elementId}"]`
+      );
+      boundTexts.forEach(el => {
+        el.classList.add('is-deleted');
+        console.log('[Editor] Applied ghosting to element:', elementId);
       });
-
-      console.log('[Editor] Binding cleanup complete for', elementIds.length, 'elements');
     };
 
-    window.addEventListener('binding:element-deleted', handleElementDeleted as EventListener);
-    return () => window.removeEventListener('binding:element-deleted', handleElementDeleted as EventListener);
-  }, [editor]);
+    const handleBindingShown = (e: CustomEvent) => {
+      const { bindingId, elementId } = e.detail;
+      console.log('[Editor] Binding shown (restore):', bindingId, elementId);
+
+      // 移除 CSS ghosting
+      const boundTexts = document.querySelectorAll(
+        `.canvas-bound-text[data-canvas-link="${elementId}"]`
+      );
+      boundTexts.forEach(el => {
+        el.classList.remove('is-deleted');
+        console.log('[Editor] Removed ghosting from element:', elementId);
+      });
+
+      // 可选：重新加载 bindings（触发刷新）
+      window.dispatchEvent(new Event('refresh-bindings'));
+    };
+
+    window.addEventListener('binding:hidden', handleBindingHidden as EventListener);
+    window.addEventListener('binding:shown', handleBindingShown as EventListener);
+
+    return () => {
+      window.removeEventListener('binding:hidden', handleBindingHidden as EventListener);
+      window.removeEventListener('binding:shown', handleBindingShown as EventListener);
+    };
+  }, []);
 
   // Global Event Delegation for Canvas Links (Performance Optimization)
   useEffect(() => {

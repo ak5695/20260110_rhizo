@@ -207,20 +207,26 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
         loadCanvas();
     }, [documentId, excalidrawAPI]);
 
-    // 1.5 Load Bindings（企业级：初始化时清理孤立绑定）
+    // 1.5 Load Bindings + Initialize ExistenceEngine (EAS)
     useEffect(() => {
         const loadBindings = async () => {
             if (canvasId) {
-                // 步骤1：清理孤立绑定（刷新后的防御性清理）
-                const { cleanupOrphanedBindings } = await import('@/actions/canvas-bindings');
-                const cleanupResult = await cleanupOrphanedBindings(canvasId);
+                // 步骤1：初始化 ExistenceEngine（EAS核心）
+                const { existenceEngine } = await import('@/lib/existence-engine');
+                await existenceEngine.initialize(canvasId);
+                console.log('[Canvas] ExistenceEngine initialized');
 
-                if (cleanupResult.success && cleanupResult.deletedCount > 0) {
-                    console.log('[Canvas] Cleaned up', cleanupResult.deletedCount, 'orphaned bindings on page load');
-                    toast.info(`Cleaned ${cleanupResult.deletedCount} orphaned bindings`);
+                // 步骤2：和解修复不一致（自动修复高置信度问题）
+                const reconcileResult = await existenceEngine.reconcile(canvasId, true);
+                if (reconcileResult.autoFixed > 0) {
+                    toast.info(`Auto-fixed ${reconcileResult.autoFixed} inconsistencies`);
+                    console.log('[Canvas] Reconciliation:', reconcileResult);
+                }
+                if (reconcileResult.requiresHumanReview > 0) {
+                    toast.warning(`${reconcileResult.requiresHumanReview} bindings require review`);
                 }
 
-                // 步骤2：加载活跃绑定（仅加载未删除的）
+                // 步骤3：加载活跃绑定（仅加载未删除的）
                 const result = await getCanvasBindings(canvasId);
                 if (result.success) {
                     // 过滤掉isElementDeleted=true的绑定
@@ -344,7 +350,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
     }, [debouncedSave, debouncedViewportSave]);
 
 
-    // 【企业级】增量删除检测 + 立即数据库清理
+    // 【EAS】增量删除检测 + ExistenceEngine 状态转换
     const prevActiveElementsRef = useRef<Set<string>>(new Set());
 
     const detectAndCleanupDeletedBindings = useCallback(
@@ -362,20 +368,14 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             if (newlyDeletedIds.length > 0) {
                 console.log('[Canvas] Detected deleted elements:', newlyDeletedIds);
 
-                // 立即清理数据库绑定
-                const { deleteBindingsByElementIds } = await import('@/actions/canvas-bindings');
-                const result = await deleteBindingsByElementIds(canvasId, newlyDeletedIds);
+                // 使用 ExistenceEngine 隐藏绑定（不硬删除）
+                const { existenceEngine } = await import('@/lib/existence-engine');
+                const hiddenCount = await existenceEngine.hideByElementIds(newlyDeletedIds);
 
-                if (result.success && result.deletedCount > 0) {
-                    console.log('[Canvas] Cleaned up', result.deletedCount, 'bindings');
-
-                    // 通知Editor移除UI标记
-                    window.dispatchEvent(new CustomEvent('binding:element-deleted', {
-                        detail: {
-                            elementIds: newlyDeletedIds,
-                            deletedBindings: result.deletedBindings
-                        }
-                    }));
+                if (hiddenCount > 0) {
+                    console.log('[Canvas] Hid', hiddenCount, 'bindings via ExistenceEngine');
+                    // Events are automatically emitted by ExistenceEngine (binding:hidden)
+                    // Editor will listen to these events and apply CSS ghosting
 
                     // 刷新绑定列表
                     window.dispatchEvent(new Event('refresh-bindings'));
@@ -490,6 +490,32 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
 
         window.addEventListener("document:block-change", handleBlockChange);
         return () => window.removeEventListener("document:block-change", handleBlockChange);
+    }, [excalidrawAPI]);
+
+    // 4. EAS: Listen for binding restoration (undo/restore events)
+    useEffect(() => {
+        if (!excalidrawAPI) return;
+
+        const handleBindingShown = (e: any) => {
+            const { bindingId, elementId } = e.detail;
+            console.log('[Canvas] Binding shown (restore):', bindingId, elementId);
+
+            // Restore Canvas element from hidden/deleted state
+            const elements = excalidrawAPI.getSceneElements();
+            const element = elements.find((el: any) => el.id === elementId);
+
+            if (element && element.isDeleted) {
+                excalidrawAPI.updateScene({
+                    elements: elements.map((el: any) =>
+                        el.id === elementId ? { ...el, isDeleted: false } : el
+                    )
+                });
+                console.log('[Canvas] Restored element:', elementId);
+            }
+        };
+
+        window.addEventListener('binding:shown', handleBindingShown);
+        return () => window.removeEventListener('binding:shown', handleBindingShown);
     }, [excalidrawAPI]);
 
     // --- Cognitive Visibility: Native Links (No Overlay) ---
