@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import "@excalidraw/excalidraw/index.css";
 import { useTheme } from "next-themes";
 import { Maximize, Minimize, Loader2 } from "lucide-react";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { DRAG_MIME_TYPE } from "@/lib/canvas/drag-drop-types";
 import { dragDropBridge } from "@/lib/canvas/drag-drop-bridge";
 import { v4 as uuidv4 } from "uuid";
@@ -52,6 +52,12 @@ interface Binding {
 export const ExcalidrawCanvas = ({ documentId, className, onChange }: ExcalidrawCanvasProps) => {
     const { resolvedTheme } = useTheme();
     const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
+
+    // Memoize API setter to prevent unnecessary re-renders of Excalidraw
+    const handleSetExcalidrawAPI = useCallback((api: any) => {
+        setExcalidrawAPI(api);
+    }, []);
+
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Use custom hook for canvas sync
@@ -64,6 +70,23 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
         syncElements,
         syncViewport
     } = useCanvasSync(documentId, excalidrawAPI);
+
+    // 1.25 Stabilize initialData to prevent "controlled to uncontrolled" errors
+    // We memoize this so it only changes when essentially needed (e.g. initial content arrival)
+    const initialData = useMemo(() => {
+        if (!isLoaded && initialElements.length === 0) return null;
+
+        return {
+            elements: initialElements || [],
+            appState: {
+                viewBackgroundColor: resolvedTheme === "dark" ? "#121212" : "#ffffff",
+                currentItemStrokeColor: resolvedTheme === "dark" ? "#ffffff" : "#000000",
+                name: "Jotion Workspace",
+                collaborators: new Map(),
+            },
+            scrollToContent: true,
+        };
+    }, [isLoaded, initialElements, resolvedTheme]);
 
     const [isDragOver, setIsDragOver] = useState(false);
     const [bindings, setBindings] = useState<any[]>([]);
@@ -102,7 +125,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
 
     // 1. Navigation Helper (Jump to Block)
     const { jumpToElement } = useNavigationStore();
-    const jumpToBlock = (blockId: string, text: string) => {
+    const jumpToBlock = (blockId: string, text: string, focusElementId?: string) => {
         // ... (existing)
         const element = document.querySelector(`[data-id="${blockId}"]`);
         if (element) {
@@ -112,7 +135,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
             setTimeout(() => element.classList.remove('bg-orange-100'), 2000);
 
             // Set element target for Highlight
-            useNavigationStore.getState().jumpToBlock(blockId, text);
+            useNavigationStore.getState().jumpToBlock(blockId, text, focusElementId);
         } else {
             console.warn("[Canvas] Block not found in DOM:", blockId);
             toast.error("Block not found in current view");
@@ -216,8 +239,13 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
                 const label = element?.text || binding.anchorText || "Linked Block";
 
                 // Use Zustand store to navigate to block
-                jumpToBlock(binding.blockId, label.substring(0, 20) + (label.length > 20 ? "..." : ""));
-                console.log("[Canvas] Jumping to block:", binding.blockId);
+                // Pass the elementId so the document can focus the specific link
+                jumpToBlock(
+                    binding.blockId,
+                    label.substring(0, 20) + (label.length > 20 ? "..." : ""),
+                    selectedId
+                );
+                console.log("[Canvas] Jumping to block:", binding.blockId, "focusing element:", selectedId);
             }
         } else if (selectedIds.length === 0) {
             lastSelectedIdRef.current = null;
@@ -554,33 +582,29 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
             onDrop={handleDrop}
         >
             {/* Note: Drag overlay removed for cleaner UX */}
+            {initialData && (
+                <Excalidraw
+                    excalidrawAPI={handleSetExcalidrawAPI}
+                    theme={resolvedTheme === "dark" ? "dark" : "light"}
+                    initialData={initialData}
+                    onChange={handleCanvasChange}
+                    onLinkOpen={(element, event) => {
+                        if (element.link && element.link.startsWith("jotion://block/")) {
+                            event.preventDefault();
+                            const blockId = element.link.replace("jotion://block/", "");
 
-
-
-
-
-            <Excalidraw
-                excalidrawAPI={(api: any) => setExcalidrawAPI(api)}
-                theme={resolvedTheme === "dark" ? "dark" : "light"}
-                initialData={{
-                    elements: initialElements,
-                    appState: {
-                        viewBackgroundColor: resolvedTheme === "dark" ? "#121212" : "#ffffff",
-                        currentItemStrokeColor: resolvedTheme === "dark" ? "#ffffff" : "#000000",
-                    }
-                }}
-                onChange={handleCanvasChange}
-                onLinkOpen={(element, event) => {
-                    if (element.link && element.link.startsWith("jotion://block/")) {
-                        event.preventDefault();
-                        const blockId = element.link.replace("jotion://block/", "");
-
-                        // Use Zustand store to navigate to block
-                        jumpToBlock(blockId, 'text' in element ? (element as any).text : "Linked Block");
-                        console.log("[Canvas] Intercepted link click, jumping to block:", blockId);
-                    }
-                }}
-            />
+                            // Use Zustand store to navigate to block
+                            // Pass element.id for targeted highlighting in editor
+                            jumpToBlock(
+                                blockId,
+                                'text' in element ? (element as any).text : "Linked Block",
+                                element.id
+                            );
+                            console.log("[Canvas] Intercepted link click, jumping to block:", blockId, "focus element:", element.id);
+                        }
+                    }}
+                />
+            )}
 
             {/* Note: Canvas Binding Layer removed - using Excalidraw's native link indicators */}
 

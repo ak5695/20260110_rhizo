@@ -94,18 +94,54 @@ body,
 
 @keyframes spotlight-pulse {
   0% {
-    background-color: rgba(249, 115, 22, 0.1);
-    border-left-color: rgba(249, 115, 22, 0.4);
+    background-color: rgba(249, 115, 22, 0.2);
+    border-left-color: rgba(249, 115, 22, 0.5);
   }
 
   50% {
-    background-color: rgba(249, 115, 22, 0.25);
+    background-color: rgba(249, 115, 22, 0.6);
+    /* Much stronger flash */
     border-left-color: rgba(249, 115, 22, 1);
   }
 
   100% {
-    background-color: rgba(249, 115, 22, 0.1);
-    border-left-color: rgba(249, 115, 22, 0.4);
+    background-color: rgba(249, 115, 22, 0.2);
+    border-left-color: rgba(249, 115, 22, 0.5);
+  }
+}
+
+@keyframes block-focus-pop {
+  0% {
+    transform: scale(1);
+    background-color: rgba(168, 85, 247, 0.05);
+  }
+
+  50% {
+    transform: scale(1.02);
+    background-color: rgba(168, 85, 247, 0.15);
+  }
+
+  100% {
+    transform: scale(1);
+    background-color: rgba(168, 85, 247, 0.05);
+  }
+}
+
+@keyframes link-focus-pulse {
+  0% {
+    transform: scale(1);
+    background-color: rgba(168, 85, 247, 0.3);
+  }
+
+  50% {
+    transform: scale(1.15);
+    background-color: rgba(168, 85, 247, 0.8);
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.5);
+  }
+
+  100% {
+    transform: scale(1.05);
+    background-color: rgba(168, 85, 247, 0.4);
   }
 }
 
@@ -136,9 +172,23 @@ body,
 .bn-block-outer.is-active-link {
   background-color: rgba(249, 115, 22, 0.15) !important;
   border-left: 5px solid #f97316 !important;
-  animation: spotlight-pulse 2s infinite ease-in-out;
-  box-shadow: 0 0 20px rgba(249, 115, 22, 0.15);
+  animation: spotlight-pulse 1s infinite ease-in-out;
+  /* Faster flash */
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.3);
   z-index: 10;
+}
+
+/* 2.5 激活态 (Focused Block) - 全局联动紫色效果 */
+.bn-block-outer.is-focused-block {
+  border-left: 5px solid #a855f7 !important;
+  /* purple-500 */
+  animation: block-focus-pop 1.5s 2 ease-in-out;
+  box-shadow: 0 0 25px rgba(168, 85, 247, 0.1);
+  z-index: 20;
+}
+
+.bn-block-outer.is-focused-block .bn-block-content {
+  background-color: transparent !important;
 }
 
 /* 确保激活时背景也能穿透 */
@@ -278,6 +328,28 @@ body,
   opacity: 0.7;
 }
 
+/* --- 文字激活态 (Focused State) --- */
+.canvas-bound-text.is-focused-link {
+  background-color: #a855f7;
+  /* Remove !important to let animation work */
+  color: white !important;
+  border-bottom: 2px solid #7e22ce !important;
+  /* purple-700 */
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+  z-index: 50;
+  display: inline-block;
+  /* Required for transform */
+  animation: link-focus-pulse 1.5s 2 ease-in-out;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.dark .canvas-bound-text.is-focused-link {
+  background-color: #c084fc !important;
+  /* purple-400 */
+  box-shadow: 0 0 15px rgba(192, 132, 252, 0.5);
+}
+
 /* --- Spring Animations for UX Improvement --- */
 
 @keyframes spring-enter {
@@ -335,7 +407,8 @@ body,
   opacity: 0.4;
   color: #999;
   transition: opacity 0.2s ease, color 0.2s ease;
-  pointer-events: none; /* 禁用交互 */
+  pointer-events: none;
+  /* 禁用交互 */
 }
 
 .dark .canvas-bound-text.is-deleted {
@@ -367,9 +440,12 @@ body,
  * Pulse animation for pending bindings
  */
 @keyframes pulse-binding {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.6;
   }

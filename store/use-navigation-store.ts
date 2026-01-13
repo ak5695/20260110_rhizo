@@ -33,7 +33,7 @@ interface NavigationStore {
     highlightedElementId: string | null;       // Currently highlighted element
 
     // Actions
-    jumpToBlock: (blockId: string, label?: string) => void;
+    jumpToBlock: (blockId: string, label?: string, focusElementId?: string) => void;
     jumpToElement: (elementId: string, label?: string) => void;
     clearBlockTarget: () => void;
     clearElementTarget: () => void;
@@ -49,27 +49,28 @@ export const useNavigationStore = create<NavigationStore>((set) => ({
     highlightedElementId: null,
 
     /**
-     * Request navigation to a document block
-     * Called from Canvas when user clicks a linked element
-     */
-    jumpToBlock: (blockId: string, label?: string) => {
+    * Request navigation to a document block
+    * Called from Canvas when user clicks a linked element
+    */
+    jumpToBlock: (blockId: string, label?: string, focusElementId?: string) => {
         set({
             blockTarget: {
                 id: blockId,
                 label,
                 timestamp: Date.now()
             },
-            highlightedBlockId: blockId
+            highlightedBlockId: blockId,
+            // If we came from a specific element, highlight it in the editor
+            highlightedElementId: focusElementId || null
         });
 
         // Auto-clear highlight after 2 seconds
         setTimeout(() => {
-            set((state) =>
-                state.highlightedBlockId === blockId
-                    ? { highlightedBlockId: null }
-                    : {}
-            );
-        }, 2000);
+            set((state) => ({
+                highlightedBlockId: state.highlightedBlockId === blockId ? null : state.highlightedBlockId,
+                highlightedElementId: state.highlightedElementId === focusElementId ? null : state.highlightedElementId
+            }));
+        }, 3000); // Slightly longer for the flash to be seen
     },
 
     /**

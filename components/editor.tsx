@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
 import { useTheme } from "next-themes";
 import { BlockNoteEditor, Selection } from "@blocknote/core";
 import { useCreateBlockNote, FormattingToolbarController, GenericPopover, createReactBlockSpec, createReactStyleSpec, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
@@ -252,23 +252,28 @@ const CanvasLinkStyle = createReactStyleSpec(
     content: "styled",
   },
   {
-    render: (props) => (
-      <span
-        className="canvas-bound-text cursor-pointer transition-colors rounded-sm px-0.5"
-        style={{
-          color: '#ea580c', // orange-600
-          backgroundColor: '#fee2e2', // red-100
-          borderBottom: '1px solid #fed7aa', // orange-200
-        }}
-        data-canvas-link={props.value}
-        ref={props.contentRef}
-        onClick={(e) => {
-          e.stopPropagation(); // prevent block selection if needed
-          // Connect to Zustand store for robust navigation
-          useNavigationStore.getState().jumpToElement(props.value);
-        }}
-      />
-    ),
+    render: (props) => {
+      // Deletion state handled via class + surgery or initial render
+      return (
+        <span
+          className="canvas-bound-text cursor-pointer transition-colors rounded-sm px-0.5"
+          style={{
+            color: '#ea580c', // orange-600
+            backgroundColor: '#fee2e2', // red-100
+            borderBottom: '1px solid #fed7aa', // orange-200
+          }}
+          data-canvas-link={props.value}
+          ref={props.contentRef}
+          onClick={(e) => {
+            e.stopPropagation(); // prevent block selection if needed
+            // Connect to Zustand store for robust navigation
+            useNavigationStore.getState().jumpToElement(props.value);
+          }}
+        >
+          {props.children}
+        </span>
+      );
+    },
   }
 );
 
@@ -518,7 +523,7 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
 
   // Use Zustand navigation store (Hoisted)
   const blockTarget = useBlockTarget();
-  const { clearBlockTarget, jumpToElement } = useNavigationStore();
+  const { clearBlockTarget, jumpToElement, highlightedElementId, highlightedBlockId } = useNavigationStore();
 
   // Store cursor block ID for restoration after AI modal closes
   const savedCursorBlockRef = useRef<string | null>(null);
@@ -688,58 +693,70 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
       console.log("[Editor] Using saved selection:", savedSelection);
 
       // 【即时应用样式】使用 BlockNote API
+      // 【即时应用样式】使用 BlockNote API (Global Auto-Linking)
       try {
-        // 1. 获取目标 block
-        const block = editor.getBlock(blockId);
-        if (!block) {
-          console.warn("[Editor] Block not found:", blockId);
-          return;
-        }
+        const searchText = savedSelection.selectedText;
+        if (!searchText) return;
 
-        // 2. 在 block 内容中查找匹配的文本并应用 canvasLink 样式
-        // BlockNote 的 content 是 InlineContent 数组
-        if (block.content && Array.isArray(block.content)) {
+        let updateCount = 0;
+
+        // Iterate ALL blocks to find and link the text
+        editor.forEachBlock((block) => {
+          if (!block.content || !Array.isArray(block.content)) return true;
+
+          // 1. Performance Guard: Check if block text contains our search term at all
+          const blockText = block.content.reduce((acc: string, curr: any) => acc + (curr.text || ''), '');
+          if (!blockText.includes(searchText)) return true;
+
+          // 2. Scan content and transform
           const newContent = block.content.map((item: any) => {
-            if (item.type === 'text' && item.text) {
-              // 检查是否包含选中的文本
-              const idx = item.text.indexOf(savedSelection!.selectedText);
-              if (idx !== -1) {
-                // 找到匹配，需要拆分并应用样式
-                const before = item.text.substring(0, idx);
-                const match = savedSelection!.selectedText;
-                const after = item.text.substring(idx + match.length);
+            if (item.type === 'text' && item.text && item.text.includes(searchText)) {
+              // 3. Precision Check: If this item is already correctly linked, skip processing it
+              // We check styles to see if it already has the SAME canvasLink
+              if (item.styles?.canvasLink === elementId) return [item];
 
-                const result: any[] = [];
+              const parts: any[] = [];
+              let remaining = item.text;
+              const currentStyles = item.styles || {};
 
-                if (before) {
-                  result.push({ type: 'text', text: before, styles: item.styles || {} });
-                }
+              // Split precisely on search term
+              while (remaining.includes(searchText)) {
+                const i = remaining.indexOf(searchText);
+                const before = remaining.substring(0, i);
+                const match = searchText;
+                const after = remaining.substring(i + match.length);
 
-                result.push({
+                if (before) parts.push({ type: 'text', text: before, styles: currentStyles });
+
+                parts.push({
                   type: 'text',
                   text: match,
                   styles: {
-                    ...(item.styles || {}),
+                    ...currentStyles,
                     canvasLink: elementId,
                     textColor: 'orange',
                     backgroundColor: 'red'
                   }
                 });
-
-                if (after) {
-                  result.push({ type: 'text', text: after, styles: item.styles || {} });
-                }
-
-                return result;
+                remaining = after;
               }
+              if (remaining) parts.push({ type: 'text', text: remaining, styles: currentStyles });
+              return parts;
             }
             return [item];
           }).flat();
 
-          // 3. 更新 block 内容
-          editor.updateBlock(block, { content: newContent });
-          console.log("[Editor] Applied canvasLink style + colors to text:", savedSelection.selectedText);
-        }
+          // 4. Performance Guard: Only call updateBlock if content actually CHANGED
+          // This avoids massive DOM thrashing in large documents
+          if (JSON.stringify(block.content) !== JSON.stringify(newContent)) {
+            editor.updateBlock(block, { content: newContent });
+            updateCount++;
+          }
+          return true;
+        });
+
+        console.log(`[Editor] Global Auto-Linking applied to ${updateCount} blocks for "${searchText}"`);
+
       } catch (err) {
         console.error("[Editor] Failed to apply canvasLink style:", err);
       }
@@ -923,29 +940,49 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     return () => window.removeEventListener("canvas:element-status-update", handleStatusUpdate as EventListener);
   }, []);
 
-  // Apply visual ghosting through CSS classes (Non-destructive)
+
+
+  // Consolidated Surgical Update (O(1)ish - precisely targets only changed IDs)
   useEffect(() => {
-    const updateStyles = () => {
-      document.querySelectorAll('.canvas-bound-text').forEach(el => {
-        const id = el.getAttribute('data-canvas-link');
-        if (id && deletedElementIds.has(id)) {
-          el.classList.add('is-deleted');
-        } else {
-          el.classList.remove('is-deleted');
-        }
-      });
-    };
+    // 1. Clear previous highlights (targeted)
+    document.querySelectorAll(".is-focused-block").forEach(el => el.classList.remove("is-focused-block"));
+    document.querySelectorAll(".is-focused-link").forEach(el => el.classList.remove("is-focused-link"));
+    document.querySelectorAll(".is-active-link").forEach(el => el.classList.remove("is-active-link"));
 
-    updateStyles();
-    const observer = new MutationObserver(updateStyles);
-    const editorElement = document.querySelector('.bn-editor');
-    if (editorElement) {
-      observer.observe(editorElement, { childList: true, subtree: true });
+    // 2. Add highlight to target block
+    if (highlightedBlockId) {
+      const bEl = document.querySelector(`[data-id="${highlightedBlockId}"]`) as HTMLElement;
+      if (bEl) {
+        bEl.classList.add("is-focused-block");
+        bEl.classList.add("is-active-link");
+      }
     }
-    return () => observer.disconnect();
+
+    // 3. Add highlight to target inline link (all occurrences)
+    if (highlightedElementId) {
+      const lEls = document.querySelectorAll(`[data-canvas-link="${highlightedElementId}"]`);
+      if (lEls.length > 0) {
+        console.log(`[Editor] Found ${lEls.length} link instances to highlight for ID:`, highlightedElementId);
+        lEls.forEach(el => el.classList.add("is-focused-link"));
+      } else {
+        // Option B: If not in DOM yet (e.g. big document), maybe it will appear after scroll
+        // But for now, pinpointing is better
+        console.warn("[Editor] No link instances found in DOM yet for ID:", highlightedElementId);
+      }
+    }
+  }, [highlightedBlockId, highlightedElementId]);
+
+  // Handle ghosting for deleted elements (O(N) but only on status change, not keystroke)
+  useEffect(() => {
+    document.querySelectorAll('.canvas-bound-text').forEach(el => {
+      const id = el.getAttribute('data-canvas-link');
+      if (id && deletedElementIds.has(id)) {
+        el.classList.add('is-deleted');
+      } else {
+        el.classList.remove('is-deleted');
+      }
+    });
   }, [deletedElementIds]);
-
-
 
   // 4. Handle Jump-to-Block from Canvas (via Zustand store)
   useEffect(() => {
@@ -1244,7 +1281,6 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
 
   return (
     <div className="relative group/editor">
-
       <BlockNoteView
         editable={editable}
         editor={editor}
