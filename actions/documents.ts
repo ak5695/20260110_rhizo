@@ -144,63 +144,51 @@ export const create = async (args: { id?: string, title: string, parentDocumentI
         parentDocumentId: args.parentDocumentId,
     })
 
-    // ⚡ Notion-like Performance: Async parent update (non-blocking)
-    // 将父文档更新改为异步任务，不阻塞创建返回
-    if (args.parentDocumentId) {
-        // 使用 Promise.resolve().then() 创建微任务，立即返回给客户端
-        Promise.resolve().then(async () => {
+        // ⚡ Notion-like Performance: Async parent update & caching (non-blocking)
+        // 将所有非核心任务放到异步队列，且不阻塞主响应
+        (async () => {
             try {
-                const parent = await getDocumentWithVersion(args.parentDocumentId!, user.id);
-                if (parent) {
-                    let content: any[] = [];
-                    try {
-                        content = parent.document.content ? JSON.parse(parent.document.content) : [];
-                    } catch (e) {
-                        content = [];
+                if (args.parentDocumentId) {
+                    const parent = await getDocumentWithVersion(args.parentDocumentId!, user.id);
+                    if (parent) {
+                        let content: any[] = [];
+                        try {
+                            content = parent.document.content ? JSON.parse(parent.document.content) : [];
+                        } catch (e) { content = []; }
+
+                        const pageBlock = {
+                            id: Math.random().toString(36).substring(2, 11),
+                            type: "page",
+                            props: {
+                                backgroundColor: "default",
+                                textColor: "default",
+                                textAlignment: "left",
+                                pageId: newDoc.id,
+                                title: args.title
+                            },
+                            children: []
+                        };
+
+                        content.push(pageBlock);
+
+                        await safeUpdateDocument({
+                            documentId: parent.document.id,
+                            updates: { content: JSON.stringify(content) },
+                            options: {
+                                expectedVersion: parent.version,
+                                userId: user.id
+                            }
+                        });
+
+                        await documentCache.invalidate(parent.document.id);
                     }
-
-                    // Append reference block (type: page)
-                    const pageBlock = {
-                        id: Math.random().toString(36).substring(2, 11),
-                        type: "page",
-                        props: {
-                            backgroundColor: "default",
-                            textColor: "default",
-                            textAlignment: "left",
-                            pageId: newDoc.id,
-                            title: args.title
-                        },
-                        children: []
-                    };
-
-                    content.push(pageBlock);
-
-                    await safeUpdateDocument({
-                        documentId: parent.document.id,
-                        updates: { content: JSON.stringify(content) },
-                        options: {
-                            expectedVersion: parent.version,
-                            userId: user.id
-                        }
-                    });
-
-                    // Invalidate parent cache
-                    await documentCache.invalidate(parent.document.id);
-
-                    // 仅刷新父文档路径
-                    revalidatePath(`/documents/${args.parentDocumentId}`);
                 }
             } catch (error) {
-                // 静默失败，不影响创建流程
-                console.error("[NotionSync] Async parent link failed:", error);
+                console.error("[NotionSync] Background maintenance failed:", error);
             }
-        });
-    }
+        })();
 
-    // ⚡ 仅刷新必要路径
-    revalidatePath("/documents")
-
-    // ✅ 立即返回新文档（不等待父文档更新）
+    // ✅ 立即返回新文档，毫秒级响应
     return newDoc
 }
 

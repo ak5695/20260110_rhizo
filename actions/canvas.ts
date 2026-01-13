@@ -11,6 +11,7 @@ import { headers } from "next/headers";
 import { db } from "@/db";
 import { canvases, canvasElements } from "@/db/canvas-schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
+import { withRetry } from "@/lib/safe-update";
 
 /**
  * Get or create a canvas for a document
@@ -113,16 +114,21 @@ export async function getOrCreateCanvas(documentId: string) {
       };
     }
 
-    // Create new canvas
-    const [newCanvas] = await db
-      .insert(canvases)
-      .values({
-        documentId,
-        userId,
-        lastEditedBy: userId,
-        name: "Canvas",
-      })
-      .returning();
+    // Create new canvas with retry to handle race conditions during optimistic document creation
+    const [newCanvas] = await withRetry(async () => {
+      return await db
+        .insert(canvases)
+        .values({
+          documentId,
+          userId,
+          lastEditedBy: userId,
+          name: "Canvas",
+        })
+        .returning();
+    }, {
+      maxAttempts: 5,
+      baseDelay: 400, // Wait a bit for the document to be created in background
+    });
 
     console.log("[getOrCreateCanvas] Canvas created:", newCanvas.id);
 

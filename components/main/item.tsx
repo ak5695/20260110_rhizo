@@ -22,6 +22,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
+import { mutate } from "swr";
+import { useDocumentStore } from "@/store/use-document-store";
 
 interface ItemProps {
   id?: string;
@@ -73,23 +75,58 @@ export const Item = ({
     onExpand?.();
   };
 
+  const setDocument = useDocumentStore((state) => state.setDocument);
+
   const onCreate = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
     event.stopPropagation();
     if (!id) return;
-    const promise = create({ title: "Untitled", parentDocumentId: id }).then(
-      (document) => {
-        if (!expanded) {
-          onExpand?.();
-        }
-        router.push(`/documents/${document.id}`);
-      },
-    );
 
-    toast.promise(promise, {
-      loading: "Creating a new note...",
-      success: "New note created",
-      error: "Failed to create new note",
+    const tempId = crypto.randomUUID();
+
+    // ⚡ CRITICAL: Immediate Jump
+    router.push(`/documents/${tempId}`);
+
+    // ⚡ Phase 2: Optimistic UI for Sub-pages
+    if (session?.user) {
+      const optimisticDoc = {
+        id: tempId,
+        title: "Untitled",
+        userId: session.user.id,
+        version: 1,
+        createdAt: new Date(),
+        isArchived: false,
+        isPublished: false,
+        parentDocumentId: id,
+      };
+
+      setDocument(optimisticDoc);
+
+      // Update parent's sub-list in sidebar
+      mutate(["documents", id], (current: any) => {
+        return [optimisticDoc, ...(current || [])];
+      }, false);
+    }
+
+    if (!expanded) {
+      onExpand?.();
+    }
+
+    // 2. Background Creation
+    const createPromise = create({
+      id: tempId,
+      title: "Untitled",
+      parentDocumentId: id
     });
+
+    createPromise.then(() => {
+      window.dispatchEvent(new CustomEvent("documents-changed"));
+    });
+
+    toast.promise(createPromise, {
+      loading: "Initializing note...",
+      success: "Note ready",
+      error: "Sync failed",
+    }, { id: "create-doc" });
   };
   const ChevronIcon = expanded ? ChevronDown : ChevronRight;
 

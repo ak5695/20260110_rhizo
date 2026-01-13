@@ -13,6 +13,7 @@ import { useParams } from "next/navigation";
 import { writeQueue } from "@/lib/write-queue";
 import { SelectionToolbar } from "@/components/selection-toolbar";
 import { DocumentOutline } from "@/components/document-outline";
+import { useDocument } from "@/store/use-document-store";
 import {
   useLayoutStore,
   useCanvasOpen,
@@ -51,8 +52,17 @@ export default function DocumentIdPage() {
     [],
   );
 
-  const [document, setDocument] = useState<any>(undefined);
-  const documentVersionRef = useRef<number>(0);
+  const optimism = useDocument(documentId as string);
+  const [document, setDocument] = useState<any>(optimism);
+  const documentVersionRef = useRef<number>(optimism?.version || 0);
+
+  // Sync state if optimism changes (e.g. from store seeding)
+  useEffect(() => {
+    if (optimism && !document) {
+      setDocument(optimism);
+      documentVersionRef.current = optimism.version;
+    }
+  }, [optimism, document]);
   const [editorDocument, setEditorDocument] = useState<any>(null);
 
   // Use Zustand store for layout state (no more useState + props drilling!)
@@ -62,9 +72,9 @@ export default function DocumentIdPage() {
   const { toggleCanvas, toggleFullscreen, toggleOutline, openCanvas } = useLayoutStore();
 
   // ⚡ Enterprise Load Strategy (Notion-like)
-  // 1. 立即尝试加载（乐观）
-  // 2. 快速重试（指数退避，最大3次）
-  // 3. 处理乐观创建的Race Condition
+  // 1. Level 1: Check UI Store (Zustand) - Instant
+  // 2. Level 2: Check Local Persistence (IndexedDB) - <10ms
+  // 3. Level 3: Background Server Sync & Collision handling
   useEffect(() => {
     if (typeof documentId !== "string") return;
 
@@ -73,20 +83,41 @@ export default function DocumentIdPage() {
     const maxRetries = 3;
 
     const load = async () => {
+      // Step 2: Try Local Persistent Cache if not in UI store
+      // We do this BEFORE the server action to ensure "Instant Load"
+      if (!document) {
+        import("@/lib/cache/document-cache").then(async ({ documentCache }) => {
+          try {
+            // We use a dummy fetchFn because we just want to peek at cache
+            const cached = await documentCache.get(documentId as string, async () => null);
+            if (cached && isMounted && !document) {
+              console.log("[DocumentPage] L2 Cache Hit - Instant Loading");
+              setDocument(cached);
+              documentVersionRef.current = cached.version;
+            }
+          } catch (e) { /* ignore cache errors */ }
+        });
+      }
+
       try {
         const doc = await getById(documentId);
 
         if (doc) {
           if (isMounted) {
-            setDocument(doc);
-            documentVersionRef.current = doc.version;
+            // Only update if newer version or first load
+            if (!document || doc.version >= documentVersionRef.current) {
+              setDocument(doc);
+              documentVersionRef.current = doc.version;
+
+              // Seed cache for next time
+              import("@/lib/cache/document-cache").then(({ documentCache }) => {
+                documentCache.set(documentId as string, doc);
+              });
+            }
           }
         } else if (retryCount < maxRetries) {
-          // ⚡ 优化：使用指数退避，但首次重试更快（100ms）
-          // Notion的策略：首次快速重试，后续逐渐延长
           retryCount++;
           const delay = retryCount === 1 ? 100 : 200 * Math.pow(2, retryCount - 2);
-          console.log(`[DocumentPage] Optimistic load retry ${retryCount}/${maxRetries} after ${delay}ms`);
           setTimeout(load, delay);
         } else {
           if (isMounted) setDocument(null);
@@ -104,7 +135,7 @@ export default function DocumentIdPage() {
 
     load();
     return () => { isMounted = false; };
-  }, [documentId]);
+  }, [documentId, document]);
 
   // Listen for document conflicts
   useEffect(() => {

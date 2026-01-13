@@ -155,3 +155,7 @@ export const useDocumentTitle = (documentId: string) => {
 export const useDocumentIcon = (documentId: string) => {
     return useDocumentStore((state) => state.documents.get(documentId)?.icon);
 };
+
+export const useDocument = (documentId: string) => {
+    return useDocumentStore((state) => state.documents.get(documentId));
+};

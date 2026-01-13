@@ -74,9 +74,29 @@ export const DocumentList = ({
     ["documents", parentDocumentId],
     ([, id]) => getSidebar(id),
     {
-      // Revalidate on focus and every 30 seconds for background sync
       revalidateOnFocus: true,
       refreshInterval: 30000,
+      onSuccess: (data) => {
+        if (data && Array.isArray(data)) {
+          // ⚡ Hyper-Speed Seeding: Pre-load all fetched docs into local cache & store
+          const docStore = useDocumentStore.getState();
+          import("@/lib/cache/document-cache").then(({ documentCache }) => {
+            data.forEach((doc) => {
+              // 1. Sync metadata to Zustand for instant title/icon
+              docStore.setDocument({
+                id: doc.id,
+                title: doc.title,
+                icon: doc.icon,
+                version: doc.version,
+                userId: doc.userId,
+              });
+
+              // 2. Sync full document to persistent IndexedDB cache
+              documentCache.set(doc.id, doc);
+            });
+          });
+        }
+      }
     }
   );
 

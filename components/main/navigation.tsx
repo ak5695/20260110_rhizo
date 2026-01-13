@@ -1,5 +1,9 @@
 "use client";
 
+import { authClient } from "@/lib/auth-client";
+import { useDocumentStore } from "@/store/use-document-store";
+import { mutate } from "swr";
+
 import {
   ChevronLeft,
   MenuIcon,
@@ -53,6 +57,9 @@ export const Navigation = () => {
     reset
   } = useSidebarStore();
 
+  const { data: session } = authClient.useSession();
+  const setDocument = useDocumentStore((state) => state.setDocument);
+
   const isResizingRef = useRef(false);
   const sidebarRef = useRef<ElementRef<"aside">>(null);
 
@@ -96,19 +103,41 @@ export const Navigation = () => {
   const handleCreate = () => {
     const tempId = crypto.randomUUID();
 
-    // 1. Instant Navigation (Optimistic)
+    // ⚡ CRITICAL: Immediate Jump
     router.push(`/documents/${tempId}`);
 
+    // ⚡ Phase 2: Client-side Cache Seeding (Optimistic)
+    if (session?.user) {
+      const optimisticDoc = {
+        id: tempId,
+        title: "Untitled",
+        userId: session.user.id,
+        version: 1,
+        createdAt: new Date(),
+        isArchived: false,
+        isPublished: false,
+        parentDocumentId: null,
+      };
+
+      setDocument(optimisticDoc);
+
+      // ⚡ Phase 2.5: Sidebar Optimism
+      mutate(["documents", undefined], (current: any) => {
+        return [optimisticDoc, ...(current || [])];
+      }, false);
+    }
+
     // 2. Background Creation (Non-blocking)
-    const promise = create({
+    const createPromise = create({
       id: tempId,
       title: "Untitled"
-    }).then(() => {
-      // Dispatch event to refresh document list immediately
+    });
+
+    createPromise.then(() => {
       window.dispatchEvent(new CustomEvent("documents-changed"));
     });
 
-    toast.promise(promise, {
+    toast.promise(createPromise, {
       loading: "Initializing note...",
       success: "Note ready",
       error: "Sync failed - please refresh",
