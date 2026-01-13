@@ -366,10 +366,19 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange, isFullscreen
             );
             const prevActiveIds = prevActiveElementsRef.current;
 
+            // DEBUG: 详细日志
+            console.log('[Canvas-EAS] Delete detection triggered');
+            console.log('[Canvas-EAS] Total elements:', currentElements.length);
+            console.log('[Canvas-EAS] Deleted elements:', currentElements.filter(el => el.isDeleted).length);
+            console.log('[Canvas-EAS] Previous active count:', prevActiveIds.size);
+            console.log('[Canvas-EAS] Current active count:', currentActiveIds.size);
+
             // 计算新删除的元素（增量检测）
             const newlyDeletedIds = Array.from(prevActiveIds).filter(
                 id => !currentActiveIds.has(id)
             );
+
+            console.log('[Canvas-EAS] Newly deleted IDs:', newlyDeletedIds);
 
             if (newlyDeletedIds.length > 0) {
                 console.log('[Canvas] Detected deleted elements:', newlyDeletedIds);
