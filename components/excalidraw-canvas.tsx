@@ -88,7 +88,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
             appState: {
                 viewBackgroundColor: resolvedTheme === "dark" ? "#121212" : "#ffffff",
                 currentItemStrokeColor: resolvedTheme === "dark" ? "#ffffff" : "#000000",
-                name: "Jotion Workspace",
+                name: "Rhizo Workspace",
                 collaborators: new Map(),
                 isLoading: false,
                 // Add more stable defaults to prevent "undefined" drift in internal inputs

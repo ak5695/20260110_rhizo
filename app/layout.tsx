@@ -11,19 +11,19 @@ import React from "react";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Jotion",
-  description: "The connected workspace where better, faster work happens.",
+  title: "Rhizo",
+  description: "Rooted Knowledge. Connected Thought.",
   icons: {
     icon: [
       {
         media: "(prefers-color-scheme: light)",
-        url: "/logo.svg",
-        href: "/logo.svg",
+        url: "/logo.jpg",
+        href: "/logo.jpg",
       },
       {
         media: "(prefers-color-scheme: dark)",
-        url: "/logo-dark.svg",
-        href: "/logo-dark.svg",
+        url: "/logo-dark.jpg",
+        href: "/logo-dark.jpg",
       },
     ],
   },

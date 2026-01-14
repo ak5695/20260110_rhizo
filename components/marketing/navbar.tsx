@@ -30,14 +30,14 @@ export const Navbar = () => {
               <Link href="/sign-in">Login</Link>
             </Button>
             <Button size="sm" asChild>
-              <Link href="/sign-up">Get Jotion free</Link>
+              <Link href="#waitlist">Join Waitlist</Link>
             </Button>
           </>
         )}
         {session && !isLoading && (
           <>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/documents">Enter Jotion</Link>
+              <Link href="/documents">Enter Rhizo</Link>
             </Button>
             <UserItem />
           </>

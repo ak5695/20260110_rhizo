@@ -30,7 +30,7 @@ export default function SignIn() {
 
     return (
         <div className="flex flex-col gap-4 p-10 max-w-md mx-auto mt-20 border rounded-lg bg-background">
-            <h1 className="text-2xl font-bold">Sign In</h1>
+            <h1 className="text-2xl font-bold">不好意思，只有dufran可以登录哦</h1>
             <Input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} />
             <Input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
             <Button onClick={signIn} disabled={loading}>{loading ? "Signing in..." : "Sign In"}</Button>

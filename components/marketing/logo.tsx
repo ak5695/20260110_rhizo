@@ -8,20 +8,20 @@ export const Logo = () => {
   return (
     <div className="hidden md:flex items-center gap-x-2">
       <Image
-        src="/logo.svg"
+        src="/logo.jpg"
         alt="Logo"
         height="40"
         width="40"
         className="dark:hidden"
       />
       <Image
-        src="/logo-dark.svg"
+        src="/logo-dark.jpg"
         alt="Logo"
         height="40"
         width="40"
         className="hidden dark:block"
       />
-      <p className={cn("font-semibold", font)}>Jotion</p>
+      <p className={cn("font-semibold", font)}>Rhizo</p>
     </div>
   );
 };

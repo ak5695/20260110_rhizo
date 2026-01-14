@@ -33,7 +33,7 @@ export const UserItem = () => {
               <AvatarImage src={session?.user?.image || ""} />
             </Avatar>
             <span className="text-start font-medium line-clamp-1">
-              {session?.user?.name}&apos;s Jotion
+              {session?.user?.name}&apos;s Rhizo
             </span>
           </div>
           <ChevronsLeftRight className="rotate-90 ml-2 text-muted-foreground h-4 w-4" />
@@ -57,7 +57,7 @@ export const UserItem = () => {
             </div>
             <div className="space-y-1">
               <p className="text-sm line-clamp-1">
-                {session?.user?.name}&apos;s Jotion
+                {session?.user?.name}&apos;s Rhizo
               </p>
             </div>
           </div>
@@ -69,7 +69,7 @@ export const UserItem = () => {
         >
           Logout
         </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenuContent >
+    </DropdownMenu >
   );
 };

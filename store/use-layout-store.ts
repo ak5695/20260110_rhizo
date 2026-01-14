@@ -13,6 +13,7 @@
  */
 
 import { create } from "zustand";
+import { useSidebarStore } from "@/store/use-sidebar-store";
 
 interface LayoutStore {
     // State
@@ -67,10 +68,16 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
      * Toggle document outline visibility
      */
     toggleOutline: () => {
+        const isOpen = !get().isOutlineOpen;
         set((state) => ({
-            isOutlineOpen: !state.isOutlineOpen,
+            isOutlineOpen: isOpen,
             isQaListOpen: false // Mutual exclusivity
         }));
+
+        // Auto-collapse navigation sidebar when opening outline
+        if (isOpen) {
+            useSidebarStore.getState().collapse();
+        }
     },
 
     /**
@@ -104,10 +111,18 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
 
     // Q&A List
     isQaListOpen: false,
-    toggleQaList: () => set((state) => ({
-        isQaListOpen: !state.isQaListOpen,
-        isOutlineOpen: false // Mutual exclusivity
-    })),
+    toggleQaList: () => {
+        const isOpen = !get().isQaListOpen;
+        set((state) => ({
+            isQaListOpen: isOpen,
+            isOutlineOpen: false // Mutual exclusivity
+        }));
+
+        // Auto-collapse navigation sidebar when opening QA list
+        if (isOpen) {
+            useSidebarStore.getState().collapse();
+        }
+    },
 }));
 
 /**
