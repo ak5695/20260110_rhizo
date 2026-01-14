@@ -26,9 +26,9 @@ After calling, provide brief explanation using [Label](#id) links.`,
 
                 if (shapes.length > 0) {
                     const nodeLinks = shapes.map((e: { i?: string; id?: string; l?: string; label?: string; t?: string; type?: string }) =>
-\`[\${e.l || e.label || e.t || e.type}](#\${e.i || e.id})\`
+                        `[${e.l || e.label || e.t || e.type}](#${e.i || e.id})`
                     ).join(', ')
-                    return \`Excalidraw diagram rendered with \${shapes.length} shapes. Now use [Label](#id) format to explain key elements. Elements: \${nodeLinks}.\`
+                    return `Excalidraw diagram rendered with ${shapes.length} shapes. Now use [Label](#id) format to explain key elements. Elements: ${nodeLinks}.`
                 }
                 return "Excalidraw diagram rendered successfully."
             } catch {
