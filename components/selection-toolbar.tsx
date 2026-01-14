@@ -289,18 +289,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
                             <span className="text-xs font-medium hidden sm:inline">图表</span>
                         </button>
 
-                        {/* Divider */}
-                        <div className="w-px h-5 bg-white/20" />
 
-                        {/* Link Existing Button */}
-                        <button
-                            onClick={handleLinkExisting}
-                            className="flex items-center gap-1.5 px-1.5 py-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/10 transition-colors"
-                            title="关联已有"
-                        >
-                            <Link className="w-4 h-4" />
-                            <span className="text-xs font-medium hidden sm:inline">关联</span>
-                        </button>
 
                         {/* Divider */}
                         <div className="w-px h-5 bg-white/20" />
