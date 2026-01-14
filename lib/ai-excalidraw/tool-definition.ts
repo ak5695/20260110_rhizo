@@ -12,7 +12,7 @@ After calling, provide brief explanation using [Label](#id) links.`,
             elements: z
                 .string()
                 .describe(
-                    "Compact JSON: {\\"e\\":[...elements]} with abbreviated keys",
+                    'Compact JSON: {"e":[...elements]} with abbreviated keys',
                 ),
         }),
         execute: async ({ elements }: { elements: string }) => {
