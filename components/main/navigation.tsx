@@ -141,7 +141,8 @@ export const Navigation = () => {
       loading: "Initializing note...",
       success: "Note ready",
       error: "Sync failed - please refresh",
-    }, { id: "create-doc" });
+      id: "create-doc"
+    });
   };
 
   // Initialize sidebar based on device type

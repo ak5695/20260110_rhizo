@@ -24,10 +24,24 @@ export const useCanvasSync = (
     const initialLoadCompleteRef = useRef(false);
     const localVersionRef = useRef(0);
 
-    // 1. Initial Loading - Cache-First Strategy
+    // Track excalidrawAPI with ref to access inside async closures
+    const excalidrawRef = useRef(excalidrawAPI);
+    useEffect(() => {
+        excalidrawRef.current = excalidrawAPI;
+    }, [excalidrawAPI]);
+
+    // 1. Initial Loading - Cache-First & Optimistic Strategy
     useEffect(() => {
         if (!documentId) return;
-        if (initialLoadCompleteRef.current) return;
+
+        // Cancellation flag to ignore stale results
+        let isActive = true;
+        let syncTimer: NodeJS.Timeout;
+
+        // Reset to loading state when document changes (even if optimistic unblock happens later)
+        if (!initialLoadCompleteRef.current) {
+            setIsLoading(true);
+        }
 
         const loadCanvas = async () => {
             console.log('[Canvas] Starting initial load for:', documentId);
@@ -35,68 +49,109 @@ export const useCanvasSync = (
             let cacheLoaded = false;
             try {
                 const cached = await canvasCache.get(documentId);
+                // If component unmounted or doc changed, abort
+                if (!isActive) return;
+
                 if (cached) {
                     console.log('[Canvas] Instant load from cache:', cached.elements.length, 'elements, version:', cached.version);
                     setCanvasId(cached.canvasId);
                     setInitialElements(cached.elements);
                     lastElementsRef.current = JSON.stringify(cached.elements);
                     localVersionRef.current = cached.version || Date.now();
-
-                    setIsLoading(false);
-                    setIsLoaded(true);
                     cacheLoaded = true;
                 }
             } catch (err) {
                 console.warn('[Canvas] Cache read failed:', err);
             }
 
-            try {
-                const result = await getOrCreateCanvas(documentId);
-                if (result.success && result.canvas) {
-                    const serverElements = result.elements || [];
-                    const serverVersion = result.canvas.version || 0;
-
-                    if (cacheLoaded && localVersionRef.current > serverVersion) {
-                        console.log('[Canvas] Local cache is newer, skipping server data');
-                        setCanvasId(result.canvas.id);
-                    } else {
-                        console.log('[Canvas] Using server data:', serverElements.length, 'elements');
-                        setCanvasId(result.canvas.id);
-
-                        if (!cacheLoaded) {
-                            setInitialElements(serverElements);
-                            lastElementsRef.current = JSON.stringify(serverElements);
-                        }
-
-                        // Update cache
-                        canvasCache.set(documentId, {
-                            canvasId: result.canvas.id,
-                            elements: serverElements,
-                            viewport: {
-                                x: result.canvas.viewportX || 0,
-                                y: result.canvas.viewportY || 0,
-                                zoom: result.canvas.zoom || 1
-                            },
-                            version: serverVersion
-                        });
-                        localVersionRef.current = serverVersion;
-                    }
-                } else if (!cacheLoaded) {
-                    toast.error(result.error || "Failed to load workspace");
-                }
-            } catch (err) {
-                console.error("[Canvas] Server sync error:", err);
-                if (!cacheLoaded) {
-                    toast.error("Network error - showing cached data");
-                }
-            } finally {
+            // OPTIMISTIC UNBLOCK: Allow UI to render immediately
+            if (isActive) {
                 setIsLoading(false);
                 setIsLoaded(true);
-                initialLoadCompleteRef.current = true;
             }
+
+            // DEBOUNCED SERVER FETCH (500ms)
+            // If user switches away within 500ms, this request is never sent.
+            syncTimer = setTimeout(async () => {
+                if (!isActive) return;
+
+                try {
+                    // Background Server Fetch
+                    const result = await getOrCreateCanvas(documentId);
+
+                    if (!isActive) {
+                        console.log('[Canvas] Request cancelled/stale for:', documentId);
+                        return;
+                    }
+
+                    if (result.success && result.canvas) {
+                        const serverElements = result.elements || [];
+                        const serverVersion = result.canvas.version || 0;
+
+                        if (cacheLoaded && localVersionRef.current > serverVersion) {
+                            console.log('[Canvas] Local cache is newer, skipping server data');
+                            setCanvasId(result.canvas.id);
+                        } else {
+                            console.log('[Canvas] Using server data:', serverElements.length, 'elements');
+                            setCanvasId(result.canvas.id);
+
+                            if (!cacheLoaded) {
+                                setInitialElements(serverElements);
+                                lastElementsRef.current = JSON.stringify(serverElements);
+
+                                // LATE HYDRATION: Detect if we loaded empty but now have data
+                                if (serverElements.length > 0 && excalidrawRef.current) {
+                                    const currentElements = excalidrawRef.current.getSceneElements();
+                                    if (currentElements.length === 0) {
+                                        excalidrawRef.current.updateScene({ elements: serverElements });
+                                        if (result.canvas.zoom) {
+                                            excalidrawRef.current.updateScene({
+                                                appState: {
+                                                    ...excalidrawRef.current.getAppState(),
+                                                    scrollX: result.canvas.viewportX || 0,
+                                                    scrollY: result.canvas.viewportY || 0,
+                                                    zoom: { value: result.canvas.zoom }
+                                                }
+                                            });
+                                        }
+                                        toast.success("Workspace loaded from server");
+                                    }
+                                }
+                            }
+
+                            // Update cache
+                            canvasCache.set(documentId, {
+                                canvasId: result.canvas.id,
+                                elements: serverElements,
+                                viewport: {
+                                    x: result.canvas.viewportX || 0,
+                                    y: result.canvas.viewportY || 0,
+                                    zoom: result.canvas.zoom || 1
+                                },
+                                version: serverVersion
+                            });
+                            localVersionRef.current = serverVersion;
+                        }
+                    }
+                } catch (err) {
+                    if (isActive) {
+                        console.error("[Canvas] Server sync error:", err);
+                    }
+                } finally {
+                    if (isActive) {
+                        initialLoadCompleteRef.current = true;
+                    }
+                }
+            }, 500);
         };
 
         loadCanvas();
+
+        return () => {
+            isActive = false;
+            clearTimeout(syncTimer);
+            initialLoadCompleteRef.current = false;
+        };
     }, [documentId]);
 
     // 2. Debounced Persistence

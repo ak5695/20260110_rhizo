@@ -163,13 +163,17 @@ export class ExistenceEngine extends EventEmitter {
         for (const binding of bindings) {
             const status = binding.currentStatus as BindingStatus;
 
+            if (!binding.elementId) continue;
+
             this.statusMap.set(binding.id, status);
             this.elementIdMap.set(binding.elementId, binding.id);
 
             // blockId mapping
-            const blockIdSet = this.blockIdMap.get(binding.blockId) || new Set();
-            blockIdSet.add(binding.id);
-            this.blockIdMap.set(binding.blockId, blockIdSet);
+            if (binding.blockId) {
+                const blockIdSet = this.blockIdMap.get(binding.blockId) || new Set();
+                blockIdSet.add(binding.id);
+                this.blockIdMap.set(binding.blockId, blockIdSet);
+            }
 
             // Full cache entry
             this.bindingCache.set(binding.id, {
@@ -177,7 +181,7 @@ export class ExistenceEngine extends EventEmitter {
                 status,
                 elementId: binding.elementId,
                 canvasId: binding.canvasId,
-                blockId: binding.blockId,
+                blockId: binding.blockId || '',
                 documentId: binding.documentId
             });
         }
@@ -518,11 +522,11 @@ export class ExistenceEngine extends EventEmitter {
      */
     public getBindingsByStatus(status: BindingStatus): string[] {
         const result: string[] = [];
-        for (const [bindingId, bindingStatus] of this.statusMap.entries()) {
+        this.statusMap.forEach((bindingStatus, bindingId) => {
             if (bindingStatus === status) {
                 result.push(bindingId);
             }
-        }
+        });
         return result;
     }
 
@@ -564,7 +568,7 @@ export class ExistenceEngine extends EventEmitter {
         const elementMap = new Map(elements.map(el => [el.id, el]));
 
         for (const binding of bindings) {
-            const element = elementMap.get(binding.elementId);
+            const element = binding.elementId ? elementMap.get(binding.elementId) : undefined;
             const bindingStatus = binding.currentStatus as BindingStatus;
 
             // Case 1: Binding visible but element deleted

@@ -126,7 +126,8 @@ export const Item = ({
       loading: "Initializing note...",
       success: "Note ready",
       error: "Sync failed",
-    }, { id: "create-doc" });
+      id: "create-doc"
+    });
   };
   const ChevronIcon = expanded ? ChevronDown : ChevronRight;
 

@@ -216,3 +216,19 @@ export const waitlist = pgTable("waitlist", {
     email: text("email").notNull().unique(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+export const qaItems = pgTable("qa_items", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("userId").notNull().references(() => user.id, { onDelete: 'cascade' }),
+    text: text("text").notNull(),
+    type: text("type").default("custom"), // what, why, how, custom
+    status: text("status").notNull().default("unasked"), // unasked, asked
+    answer: text("answer"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => {
+    return {
+        byUser: index("qa_items_user_idx").on(table.userId),
+        byStatus: index("qa_items_status_idx").on(table.status),
+    }
+});

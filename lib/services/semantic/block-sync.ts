@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { documentBlocks } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { documentCanvasBindings } from "@/db/canvas-schema";
+import { eq, and, notInArray, ne } from "drizzle-orm";
 
 /**
  * 将 BlockNote 的 JSON 内容同步到 document_blocks 表
@@ -44,6 +45,50 @@ export const syncBlocks = async (documentId: string, contentJson: string) => {
         }
 
         console.log(`[BlockSync] Synced ${blocksToUpsert.length} blocks for doc ${documentId}`);
+
+        // 3. 协调绑定关系 (Reconciliation)
+        // 目的：当 Block 被删除时，对应的 Binding 也应该被标记为无效
+
+        // 获取该文档当前所有有效的 Block IDs
+        const validBlockIds = new Set(blocksToUpsert.map(b => b.id));
+
+        // 查找所有关联到该文档、但 Block ID 已不存在的活跃绑定
+
+        // 只有当有效 Block 存在时才执行批量检查（避免全空文档的边缘情况误判）
+        if (validBlockIds.size > 0) {
+            const orphanedBindings = await db
+                .select({ id: documentCanvasBindings.id })
+                .from(documentCanvasBindings)
+                .where(
+                    and(
+                        eq(documentCanvasBindings.documentId, documentId),
+                        // 状态不是 'deleted' 的
+                        ne(documentCanvasBindings.status, "deleted"),
+                        // Block ID 不在有效列表中
+                        notInArray(documentCanvasBindings.blockId, Array.from(validBlockIds))
+                    )
+                );
+
+            if (orphanedBindings.length > 0) {
+                const orphanedIds = orphanedBindings.map(b => b.id);
+                console.log(`[BlockSync] Found ${orphanedIds.length} orphaned bindings. Cleaning up...`);
+
+                // 批量标记为 deleted
+                await db
+                    .update(documentCanvasBindings)
+                    .set({
+                        status: "deleted",
+                        updatedAt: new Date(),
+                        // provenance: "auto_cleanup" // Optional: if field exists
+                    })
+                    .where(
+                        and(
+                            eq(documentCanvasBindings.documentId, documentId),
+                            notInArray(documentCanvasBindings.blockId, Array.from(validBlockIds))
+                        )
+                    );
+            }
+        }
     } catch (error) {
         console.error("[BlockSync_ERROR]", error);
         throw error;

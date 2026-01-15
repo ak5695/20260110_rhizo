@@ -124,14 +124,13 @@ export const DocumentEditorLayout = ({
 
     return (
         <div className="h-full w-full bg-background dark:bg-[#1F1F1F] overflow-hidden">
-            <Group direction="horizontal">
+            <Group orientation="horizontal">
 
                 {/* Editor Panel */}
                 <Panel
                     className={cn("flex flex-col h-full overflow-hidden transition-all duration-300 ease-in-out", isCanvasFullscreen && "hidden")}
                     defaultSize={50}
                     minSize={20}
-                    order={1}
                     id="editor-panel"
                 >
                     <div className="flex flex-col h-full relative">
@@ -241,7 +240,6 @@ export const DocumentEditorLayout = ({
                         className={cn("flex flex-col h-full bg-muted/5", isCanvasFullscreen && "w-full flex-1")}
                         defaultSize={50}
                         minSize={20}
-                        order={2}
                         id="canvas-panel"
                     >
                         <div className="flex-1 relative border-l border-white/5 overflow-hidden shadow-inner">

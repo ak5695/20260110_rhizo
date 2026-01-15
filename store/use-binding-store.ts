@@ -42,6 +42,7 @@ interface BindingStore {
     hideByElementId: (elementId: string) => void;
     hideByElementIds: (elementIds: string[]) => void;
     showByElementId: (elementId: string) => void;
+    showByElementIds: (elementIds: string[]) => void;
     registerBinding: (binding: any) => void;
 
     // Getters
@@ -194,6 +195,39 @@ export const useBindingStore = create<BindingStore>((set, get) => ({
         }
 
         console.log('[BindingStore] Shown binding:', bindingId, 'for element:', elementId);
+    },
+
+    showByElementIds: (elementIds) => {
+        const state = get();
+        const newBindings = new Map(state.bindings);
+        const newPendingQueue = new Set(state.pendingSyncQueue);
+        const events: Array<{ bindingId: string; elementId: string; blockId: string }> = [];
+
+        for (const elementId of elementIds) {
+            const bindingId = state.elementToBinding.get(elementId);
+            if (!bindingId) continue;
+
+            const binding = state.bindings.get(bindingId);
+            if (!binding || binding.status === 'visible') continue;
+
+            const updatedBinding = { ...binding, status: 'visible' as BindingStatus, isDirty: true };
+            newBindings.set(bindingId, updatedBinding);
+            newPendingQueue.add(bindingId);
+
+            events.push({ bindingId, elementId, blockId: binding.blockId });
+        }
+
+        if (events.length > 0) {
+            set({ bindings: newBindings, pendingSyncQueue: newPendingQueue });
+
+            if (typeof window !== 'undefined') {
+                for (const evt of events) {
+                    window.dispatchEvent(new CustomEvent('binding:shown', { detail: evt }));
+                }
+            }
+
+            console.log('[BindingStore] Shown', events.length, 'bindings');
+        }
     },
 
     registerBinding: (binding) => {

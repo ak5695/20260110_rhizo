@@ -19,6 +19,7 @@ interface DocumentMetadata {
     version: number;
     userId: string;
     parentDocumentId?: string | null;
+    content?: string | null;
 }
 
 interface DocumentStore {
@@ -79,7 +80,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
             import("@/lib/cache/sidebar-cache")
         ]).then(([{ documentCache }, { sidebarCache }]) => {
             // Update Document Cache
-            documentCache.get(documentId).then((cached) => {
+            documentCache.get(documentId, async () => null).then((cached) => {
                 if (cached) {
                     documentCache.set(documentId, { ...cached, title });
                 }
@@ -137,7 +138,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
             import("@/lib/cache/sidebar-cache")
         ]).then(([{ documentCache }, { sidebarCache }]) => {
             // Update Document Cache
-            documentCache.get(documentId).then((cached) => {
+            documentCache.get(documentId, async () => null).then((cached) => {
                 if (cached) {
                     documentCache.set(documentId, { ...cached, icon });
                 }

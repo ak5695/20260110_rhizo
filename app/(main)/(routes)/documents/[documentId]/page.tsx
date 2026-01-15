@@ -26,6 +26,7 @@ export default function DocumentIdPage() {
     lastDocumentIdRef.current = documentId;
 
     let isMounted = true;
+    let syncTimer: NodeJS.Timeout;
 
     const loadDocument = async () => {
       // 【Step 1】立即检查 Zustand Store（同步，零延迟）
@@ -37,6 +38,7 @@ export default function DocumentIdPage() {
       }
 
       // 【Step 2】检查 IndexedDB 缓存（异步，<10ms）
+      let cacheLoaded = false;
       try {
         const { documentCache } = await import("@/lib/cache/document-cache");
         const cached = await documentCache.get(documentId, async () => null);
@@ -46,42 +48,55 @@ export default function DocumentIdPage() {
             console.log("[DocumentPage] Instant from IndexedDB Cache");
             setDocument(cached);
             documentVersionRef.current = cached.version;
+            cacheLoaded = true;
           }
         }
       } catch (e) {
         console.warn("[DocumentPage] Cache read error:", e);
       }
 
-      // 【Step 3】后台从服务器同步（不阻塞UI）
-      try {
-        const serverDoc = await getById(documentId);
-        if (serverDoc && isMounted) {
-          // Only update if server has newer version
-          if (serverDoc.version >= documentVersionRef.current) {
-            setDocument(serverDoc);
-            documentVersionRef.current = serverDoc.version;
+      // 【Step 3】后台从服务器同步（延迟 500ms 以避免频繁请求）
+      // 如果用户在 500ms 内切换文档，请求将被取消
+      syncTimer = setTimeout(async () => {
+        if (!isMounted) return;
 
-            // Update cache for next time
-            const { documentCache } = await import("@/lib/cache/document-cache");
-            documentCache.set(documentId, serverDoc);
+        try {
+          // Use simpler check before heavy lifting
+          if (!documentId) return;
 
-            console.log("[DocumentPage] Synced from server, version:", serverDoc.version);
+          const serverDoc = await getById(documentId);
+
+          if (serverDoc && isMounted) {
+            // Only update if server has newer version
+            if (serverDoc.version >= documentVersionRef.current) {
+              setDocument(serverDoc);
+              documentVersionRef.current = serverDoc.version;
+
+              // Update cache for next time
+              const { documentCache } = await import("@/lib/cache/document-cache");
+              documentCache.set(documentId, serverDoc);
+
+              console.log("[DocumentPage] Synced from server, version:", serverDoc.version);
+            }
+          } else if (!document && isMounted) {
+            // Document not found and we have no cached version
+            setDocument(null);
           }
-        } else if (!document && isMounted) {
-          // Document not found and we have no cached version
-          setDocument(null);
+        } catch (err) {
+          console.error("[DocumentPage] Server fetch error:", err);
+          // Keep showing cached data if available
+          if (!document && isMounted) {
+            setDocument(null);
+          }
         }
-      } catch (err) {
-        console.error("[DocumentPage] Server fetch error:", err);
-        // Keep showing cached data if available
-        if (!document && isMounted) {
-          setDocument(null);
-        }
-      }
+      }, 500);
     };
 
     loadDocument();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      clearTimeout(syncTimer);
+    };
   }, [documentId]); // Only depend on documentId, not document
 
   // Listen for document conflicts

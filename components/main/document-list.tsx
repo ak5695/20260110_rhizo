@@ -75,8 +75,10 @@ export const DocumentList = ({
     ["documents", parentDocumentId],
     ([, id]) => getSidebar(id),
     {
-      revalidateOnFocus: true,
-      refreshInterval: 30000,
+      revalidateOnFocus: false, // 禁用焦点重新验证，避免切换窗口时触发
+      revalidateIfStale: false, // 禁用过期自动验证，完全依赖手动事件触发
+      revalidateOnReconnect: false, // 网络重连时不自动刷新
+      refreshInterval: 0, // 禁用自动轮询，Sidebar数据相对静态，不需要Polling
       // 使用缓存作为 fallback
       fallbackData: cachedDocs || undefined,
       onSuccess: (data) => {
@@ -96,6 +98,7 @@ export const DocumentList = ({
                 version: doc.version,
                 userId: doc.userId,
                 parentDocumentId: doc.parentDocumentId,
+                content: doc.content, // ⚡ Critical: Content for instant render
               });
 
               // 2. Sync full document to persistent IndexedDB cache

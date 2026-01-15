@@ -76,8 +76,8 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
     // We use a ref to ensure that once the initial state is captured, it NEVER changes identity.
     const initialDataRef = useRef<any>(null);
     const initialData = useMemo(() => {
-        // Wait until canvasId and elements are ready
-        if (!isLoaded || !canvasId) return null;
+        // Wait until loaded (optimistic)
+        if (!isLoaded) return null;
 
         // If we already captured the initial data for this mount session, return it
         if (initialDataRef.current) return initialDataRef.current;
@@ -244,6 +244,7 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
     // 【Optimistic UI】增量删除检测 - 客户端即时更新
     const prevActiveElementsRef = useRef<Set<string>>(new Set());
     const hideByElementIds = useBindingStore(state => state.hideByElementIds);
+    const showByElementIds = useBindingStore(state => state.showByElementIds);
 
     const detectAndCleanupDeletedBindings = useCallback(
         (currentElements: readonly any[]) => {
@@ -252,24 +253,31 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
             );
             const prevActiveIds = prevActiveElementsRef.current;
 
-            // 计算新删除的元素（增量检测）
+            // 1. Detect Deleted (Present in Prev, Missing in Current)
             const newlyDeletedIds = Array.from(prevActiveIds).filter(
                 id => !currentActiveIds.has(id)
             );
 
+            // 2. Detect Restored (Missing in Prev, Present in Current) -> Undo Action
+            const newlyRestoredIds = Array.from(currentActiveIds).filter(
+                id => !prevActiveIds.has(id)
+            );
+
             if (newlyDeletedIds.length > 0) {
                 console.log('[Canvas] Detected deleted elements:', newlyDeletedIds);
-
-                // 【即时更新】使用客户端 BindingStore（无网络延迟）
                 hideByElementIds(newlyDeletedIds);
+                window.dispatchEvent(new Event('refresh-bindings'));
+            }
 
-                // 刷新绑定列表 UI
+            if (newlyRestoredIds.length > 0) {
+                console.log('[Canvas] Detected restored elements:', newlyRestoredIds);
+                showByElementIds(newlyRestoredIds);
                 window.dispatchEvent(new Event('refresh-bindings'));
             }
 
             prevActiveElementsRef.current = currentActiveIds;
         },
-        [hideByElementIds]
+        [hideByElementIds, showByElementIds]
     );
 
     // Excalidraw onChange fires on EVERY event

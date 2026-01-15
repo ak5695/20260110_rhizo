@@ -1,197 +1,32 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useTheme } from "next-themes";
-import { BlockNoteEditor, Selection } from "@blocknote/core";
-import { useCreateBlockNote, FormattingToolbarController, GenericPopover, createReactBlockSpec, createReactStyleSpec, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
+import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
 import "@blocknote/core/fonts/inter.css";
-import { SemanticCommandPalette } from "./semantic-command-palette";
 import { SelectionToolbar } from "./selection-toolbar";
 import { toast } from "sonner";
-import { Loader2, Zap, FileIcon, FilePlus } from "lucide-react";
-import dynamic from "next/dynamic";
+import { FilePlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import debounce from "lodash.debounce";
-import useSWR from "swr";
-import { getById } from "@/actions/documents";
-import {
-  defaultBlockSpecs,
-  defaultProps,
-  BlockNoteSchema,
-  defaultStyleSpecs,
-} from "@blocknote/core";
-import { filterSuggestionItems } from "@blocknote/core/extensions";
+import { create as serverCreateDocument } from "@/actions/documents";
 import {
   createManualAnchor,
   acceptAiSuggestion,
   rejectAiSuggestion,
   renameNode
 } from "@/actions/anchors";
-import { create as serverCreateDocument } from "@/actions/documents";
 import { useSemanticSync } from "@/store/use-semantic-sync";
 import { useNavigationStore, useBlockTarget } from "@/store/use-navigation-store";
 import { AiChatModal } from "./ai-chat-modal";
-import { useBindingSync } from "@/hooks/use-binding-sync"; // Import hook
+import { useBindingSync } from "@/hooks/use-binding-sync";
 import { ExcalidrawGenerationModal } from "./excalidraw-generation-modal";
-
-// Dynamic import for Excalidraw
-const Excalidraw = dynamic(
-  () => import("@excalidraw/excalidraw").then((mod) => mod.Excalidraw),
-  { ssr: false }
-);
-
-/**
- * Excalidraw 语义化方块
- */
-/**
- * Excalidraw 语义化方块
- */
-const ExcalidrawBlock = createReactBlockSpec(
-  {
-    type: "excalidraw",
-    propSchema: {
-      backgroundColor: { default: "default" },
-      textColor: { default: "default" },
-      textAlignment: { default: "left", values: ["left", "center", "right", "justify"] as const },
-      data: { default: "[]" },
-    },
-    content: "none",
-  },
-  {
-    render: ({ block, editor }) => {
-      const { resolvedTheme } = useTheme();
-      const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
-
-      const handleChange = (elements: any) => {
-        editor.updateBlock(block, {
-          type: "excalidraw",
-          props: { data: JSON.stringify(elements) },
-        });
-      };
-
-      const handleCaptureSemantic = async () => {
-        if (!excalidrawAPI) return;
-        const selectedElements = excalidrawAPI.getSelectedElements();
-        const textElements = selectedElements.filter((el: any) => el.type === "text");
-
-        if (textElements.length === 0) {
-          toast.error("Please select a text element on the canvas first");
-          return;
-        }
-
-        const keyword = textElements[0].text;
-        const nodeId = textElements[0].id;
-
-        toast.loading(`Capturing "${keyword}"...`, { id: "excalidraw-sync" });
-
-        try {
-          const res = await createManualAnchor({
-            blockId: block.id,
-            documentId: (editor as any)._documentId || "",
-            userId: (editor as any)._userId || "",
-            title: keyword,
-            type: "concept",
-            startOffset: 0,
-            endOffset: keyword.length,
-            blockText: "[Canvas Content]",
-            blockType: "excalidraw",
-            metadata: {
-              source: "excalidraw",
-              elementId: nodeId,
-              capturedAt: new Date().toISOString(),
-              documentId: (editor as any)._documentId
-            }
-          });
-
-          if (res.success) {
-            toast.success(`Concept "${keyword}" unified`, { id: "excalidraw-sync" });
-          }
-        } catch (error) {
-          toast.error("Capture failed", { id: "excalidraw-sync" });
-        }
-      };
-
-      return (
-        <div className="relative w-full h-[500px] border border-white/5 rounded-xl overflow-hidden group/canvas bg-background shadow-inner">
-          <div className="absolute top-2 right-2 z-50 flex gap-2 opacity-0 group-hover/canvas:opacity-100 transition-opacity">
-            <button
-              onClick={handleCaptureSemantic}
-              className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/40 border border-purple-500/30 rounded-lg backdrop-blur-md text-[10px] font-bold uppercase tracking-wider text-purple-200 transition-all"
-            >
-              <Zap className="w-3 h-3 fill-current" />
-              Mark Concept
-            </button>
-          </div>
-
-          <Excalidraw
-            excalidrawAPI={(api: any) => setExcalidrawAPI(api)}
-            initialData={{
-              elements: JSON.parse(block.props.data || "[]"),
-              appState: { theme: resolvedTheme === "dark" ? "dark" : "light" }
-            }}
-            onChange={handleChange}
-            theme={resolvedTheme === "dark" ? "dark" : "light"}
-          />
-        </div>
-      );
-    },
-  }
-);
-
-/**
- * Page Block: 仿 Notion 的子页面入口
- */
-const PageBlock = createReactBlockSpec(
-  {
-    type: "page",
-    propSchema: {
-      ...defaultProps,
-      pageId: { default: "" },
-      title: { default: "Untitled" },
-    },
-    content: "none",
-  },
-  {
-    render: ({ block }) => {
-      const router = useRouter();
-      const { data: pageData } = useSWR(
-        block.props.pageId ? `page-${block.props.pageId}` : null,
-        () => getById(block.props.pageId)
-      );
-
-      const title = pageData?.title || block.props.title || "Untitled";
-
-      return (
-        <div
-          onClick={() => router.push(`/documents/${block.props.pageId}`)}
-          className="flex items-center gap-x-3 w-full p-2.5 my-1 rounded-xl bg-muted/30 hover:bg-muted/60 dark:bg-white/5 dark:hover:bg-white/10 cursor-pointer group transition-all border border-border/20 hover:border-border/60 hover:shadow-sm"
-        >
-          <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-background border border-border/40 shadow-sm group-hover:scale-110 transition-transform">
-            {pageData?.icon ? (
-              <span className="text-lg">{pageData.icon}</span>
-            ) : (
-              <FileIcon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-            )}
-          </div>
-          <div className="flex flex-col gap-0.5 overflow-hidden">
-            <span className="font-semibold text-sm text-foreground/90 group-hover:text-foreground transition-colors truncate">
-              {title}
-            </span>
-            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-tight">
-              Sub-Page
-            </span>
-          </div>
-          <div className="ml-auto flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
-            <Zap className="h-3 w-3 text-purple-500/50" />
-            <div className="px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[9px] font-bold">OPEN</div>
-          </div>
-        </div>
-      );
-    },
-  }
-);
+import { FormattingToolbarController, SuggestionMenuController, getDefaultReactSlashMenuItems } from "@blocknote/react";
+import { filterSuggestionItems } from "@blocknote/core/extensions";
+import { schema } from "./editor/config/schema";
+import { EditorBindingOverlay } from "./editor/overlays/editor-binding-overlay";
 
 interface EditorProps {
   onChange: (value: string) => void;
@@ -202,314 +37,6 @@ interface EditorProps {
   onDocumentChange?: (document: any) => void; // Expose document for outline
 }
 
-// 1. 定义语义主权自定义样式
-const SemanticStyle = createReactStyleSpec(
-  {
-    type: "semantic",
-    propSchema: "string",
-  },
-  {
-    render: ({ value, children, contentRef }: any) => {
-      // Parse semantic data from JSON string
-      let data = { anchorId: "", nodeId: "", provenance: "AI", isLocked: "false" };
-      try {
-        if (value) data = JSON.parse(value);
-      } catch (e) { }
-
-      const isLocked = data.isLocked === "true";
-      const isAi = data.provenance === "AI";
-      const isRejected = data.provenance === "USER_REJECTED";
-
-      let className = "px-0.5 rounded-sm transition-all duration-300 ";
-
-      if (isLocked && !isRejected) {
-        className += "bg-purple-500/10 border-b-2 border-purple-500/50 shadow-[0_2px_4px_rgba(168,85,247,0.1)]";
-      } else if (isRejected) {
-        className += "bg-rose-500/10 border-b-2 border-rose-500/30 line-through decoration-rose-500/50";
-      } else if (isAi) {
-        className += "bg-amber-500/5 border-b-2 border-dashed border-amber-500/40 hover:bg-amber-500/10 animate-pulse";
-      }
-
-      return (
-        <span
-          ref={contentRef}
-          className={className}
-          data-anchor-id={data.anchorId}
-          data-node-id={data.nodeId}
-          data-is-locked={data.isLocked}
-        >
-          {children}
-        </span>
-      );
-    },
-  }
-);
-
-// Define Canvas Link Style for Inline Binding (Enterprise Grade)
-const CanvasLinkStyle = createReactStyleSpec(
-  {
-    type: "canvasLink",
-    propSchema: "string", // value = elementId
-    content: "styled",
-  },
-  {
-    render: (props) => {
-      // Deletion state handled via class + surgery or initial render
-      return (
-        <span
-          className="canvas-bound-text cursor-pointer transition-colors rounded-sm px-0.5"
-          style={{
-            color: '#ea580c', // orange-600
-            backgroundColor: '#fee2e2', // red-100
-            borderBottom: '1px solid #fed7aa', // orange-200
-          }}
-          data-canvas-link={props.value}
-          ref={props.contentRef}
-          onClick={(e) => {
-            e.stopPropagation(); // prevent block selection if needed
-            // Connect to Zustand store for robust navigation
-            useNavigationStore.getState().jumpToElement(props.value);
-          }}
-        >
-          {props.children}
-        </span>
-      );
-    },
-  }
-);
-
-// 2. 注入自定义 Schema
-const schema = BlockNoteSchema.create({
-  blockSpecs: {
-    ...defaultBlockSpecs,
-    excalidraw: ExcalidrawBlock(),
-    page: PageBlock(),
-  },
-  styleSpecs: {
-    ...defaultStyleSpecs,
-    semantic: SemanticStyle,
-    // Enterprise Text-Level Binding
-    canvasLink: CanvasLinkStyle,
-  },
-});
-
-/**
- * Editor Overlay for Binding Indicators (Enterprise Grade)
- * Independent rendering layer to avoid fighting with BlockNote's DOM management.
- */
-const EditorBindingOverlay = ({ bindings, editor, jumpToElement, activeBlockId }: { bindings: any[], editor: any, jumpToElement: (id: string) => void, activeBlockId?: string }) => {
-  const [markers, setMarkers] = useState<any[]>([]);
-  const [deletedElementIds, setDeletedElementIds] = useState<Set<string>>(new Set());
-  const [hasLiveInfo, setHasLiveInfo] = useState(false);
-
-  // Listen for canvas ghost updates
-  useEffect(() => {
-    const handleStatusUpdate = (e: CustomEvent) => {
-      const { deletedIds } = e.detail;
-      if (Array.isArray(deletedIds)) {
-        setDeletedElementIds(new Set(deletedIds));
-        setHasLiveInfo(true);
-      }
-    };
-    window.addEventListener("canvas:element-status-update", handleStatusUpdate as EventListener);
-    return () => window.removeEventListener("canvas:element-status-update", handleStatusUpdate as EventListener);
-  }, []);
-
-  // Using ResizeObserver on the editor container to detect layout shifts
-  useEffect(() => {
-    if (!editor || !bindings.length) {
-      setMarkers([]);
-      return;
-    }
-
-    const updateMarkers = () => {
-      // Find the editor container for relative positioning
-      const container = document.querySelector('.group\\/editor');
-      if (!container) return;
-      const containerRect = container.getBoundingClientRect();
-
-      const newMarkers = bindings.map(binding => {
-        // Ghost Check: Intelligent hide based on source of truth
-        // If we have live info from canvas, use local deletedIds.
-        // Otherwise use persisted state (initial load).
-        const isGhost = hasLiveInfo
-          ? deletedElementIds.has(binding.elementId)
-          : binding.isElementDeleted;
-
-        if (isGhost) return null;
-
-        // Find visible block element
-        const el = document.querySelector(`[data-id="${binding.blockId}"]`);
-        if (!el) return null;
-
-        let top = 0;
-        let height = 0;
-        let left = 0;
-        let width = 0; // needed for inline positioning
-        let isInline = false;
-
-        // 1. Try to find inline text binding
-        const textSpan = el.querySelector('.canvas-bound-text');
-        if (textSpan) {
-          const spanRect = textSpan.getBoundingClientRect();
-          top = spanRect.top - containerRect.top;
-          height = spanRect.height;
-          left = spanRect.left - containerRect.left;
-          width = spanRect.width;
-          isInline = true;
-        } else {
-          // 2. Fallback to Block Level
-          const blockRect = el.getBoundingClientRect();
-          top = blockRect.top - containerRect.top;
-          height = blockRect.height;
-          left = 0;
-          width = blockRect.width;
-        }
-
-        return {
-          id: binding.id,
-          blockId: binding.blockId,
-          elementId: binding.elementId,
-          top,
-          height,
-          left,
-          width,
-          isInline
-        };
-      }).filter(Boolean);
-
-      setMarkers(newMarkers);
-    };
-
-    // Update loop
-    let rafId: number;
-    const loop = () => {
-      updateMarkers();
-      rafId = requestAnimationFrame(loop);
-    };
-    loop();
-
-    return () => cancelAnimationFrame(rafId);
-  }, [bindings, editor, deletedElementIds, hasLiveInfo]);
-
-  if (!markers.length) return null;
-
-  return (
-    <div className="absolute inset-0 pointer-events-none z-10">
-      {markers.map((m: any) => {
-        const isActive = activeBlockId === m.blockId;
-
-        return (
-          <div
-            key={m.id}
-            style={{
-              top: m.top,
-              height: m.height,
-              left: m.isInline ? m.left : 0,
-              right: m.isInline ? 'auto' : 0,
-              width: m.isInline ? m.width : 'auto'
-            }}
-            className={`absolute transition-all duration-75 ${isActive ? 'z-20' : 'z-10'}`}
-          >
-            {/* Spotlight Effect */}
-            {isActive && (
-              <div className={`absolute inset-0 bg-red-500/10 border-orange-500 animate-pulse shadow-[0_0_30px_rgba(249,115,22,0.15)] ${m.isInline ? 'rounded border-b-2' : 'border-l-4 rounded-r-md'}`} />
-            )}
-
-            {/* Visual Gutter Line (Normal State) - Block Only */}
-            {!isActive && !m.isInline && (
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-600 rounded-r shadow-[0_0_8px_rgba(249,115,22,0.4)] opacity-80" />
-            )}
-
-            {/* Interactive Icon */}
-            <div
-              className={`absolute cursor-pointer pointer-events-auto flex items-center justify-center text-orange-500 w-6 h-6 hover:scale-110 hover:bg-orange-50 hover:border-orange-500 transition-all z-50 ${isActive ? 'ring-2 ring-orange-400 scale-110' : ''}`}
-              style={m.isInline ? {
-                left: '0%',
-                top: '50%',
-                marginTop: '-4px',
-                marginLeft: '4px'
-              } : {
-                right: 0,
-                top: -12
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                jumpToElement(m.elementId);
-              }}
-              title="Jump to Canvas"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  );
-};
-
-/**
- * 语义主权面板：纯 UI 组件，由外部控制显示
- */
-const SemanticSovereigntyPalette = (props: {
-  editor: BlockNoteEditor,
-  selectionText: string,
-  onAction: any,
-  existingAnchor?: any
-}) => {
-  const [coords, setCoords] = useState<{ x: number, y: number } | null>(null);
-
-  useEffect(() => {
-    const updateCoords = () => {
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        // 如果 rect 为空或者 top 为 0（可能未渲染），不更新
-        if (rect && (rect.width > 0 || rect.height > 0)) {
-          setCoords({
-            x: rect.left + rect.width / 2,
-            y: rect.top - 12 // 在选区上方 12px
-          });
-        }
-      }
-    };
-
-    updateCoords();
-    // 监听滚动与改变大小，确保面板跟随
-    window.addEventListener("scroll", updateCoords, true);
-    window.addEventListener("resize", updateCoords);
-    return () => {
-      window.removeEventListener("scroll", updateCoords, true);
-      window.removeEventListener("resize", updateCoords);
-    };
-  }, [props.selectionText]);
-
-  if (!coords) return null;
-
-  return (
-    <div
-      className="fixed z-[999999]"
-      style={{
-        left: `${coords.x}px`,
-        top: `${coords.y}px`,
-        transform: "translate(-50%, -100%)",
-        pointerEvents: "auto"
-      }}
-    >
-      <div className="relative">
-        <SemanticCommandPalette
-          selectionText={props.selectionText}
-          onAction={props.onAction}
-          existingAnchor={props.existingAnchor}
-        />
-        {/* 指向文本的小三角 */}
-        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-background border-r border-b border-white/5 rotate-45 shadow-sm" />
-      </div>
-    </div>
-  );
-};
-
 const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocumentChange }: EditorProps) => {
   const { resolvedTheme } = useTheme();
   const [activeSelection, setActiveSelection] = useState("");
@@ -517,7 +44,8 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
   const { activeNodeId, setActiveNode } = useSemanticSync();
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiModalPosition, setAiModalPosition] = useState({ top: 0, left: 0 });
-  const { bindings } = useBindingSync(documentId); // Cache-first Sync
+  const { bindings: bindingsMap } = useBindingSync(documentId); // Cache-first Sync
+  const bindings = useMemo(() => Array.from(bindingsMap.values()), [bindingsMap]);
   const [deletedElementIds, setDeletedElementIds] = useState<Set<string>>(new Set());
   const [hasLiveInfo, setHasLiveInfo] = useState(false);
 
@@ -569,9 +97,6 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     initialContent: initialContent ? JSON.parse(initialContent) : undefined,
     uploadFile: handleUpload,
   });
-
-  // 1. useEffect for onChange removed - handled in BlockNoteView prop
-
 
   // 2. Sync content from server/cache (Hydration)
   useEffect(() => {
@@ -674,13 +199,13 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
         runAsync();
       }
     };
-    window.addEventListener("editor:insert-text", handleInsertText as EventListener);
+    window.addEventListener("editor:insert-text", handleInsertText as unknown as EventListener);
 
     return () => {
       if (editorElement) {
         editorElement.removeEventListener("keydown", handleKeyDown as any, true);
       }
-      window.removeEventListener("editor:insert-text", handleInsertText as EventListener);
+      window.removeEventListener("editor:insert-text", handleInsertText as unknown as EventListener);
     };
   }, [editor, showAiModal]);
 
@@ -892,9 +417,6 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     }
   }, [editor, setActiveNode]);
 
-  // 3. Fetch Canvas Bindings
-
-
   // 【EAS】监听绑定状态变更事件，使用CSS Ghosting（非破坏性）
   useEffect(() => {
     const handleBindingHidden = (e: CustomEvent) => {
@@ -973,7 +495,7 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
   // Sync Deleted State from DB Bindings
   useEffect(() => {
     if (!Array.isArray(bindings)) return;
-    const dbDeleted = new Set(bindings.filter(b => b.isElementDeleted).map(b => b.elementId));
+    const dbDeleted = new Set(bindings.filter(b => b.status === "deleted").map(b => b.elementId));
     if (!hasLiveInfo && dbDeleted.size > 0) {
       setDeletedElementIds(dbDeleted);
     }
@@ -991,8 +513,6 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     window.addEventListener("canvas:element-status-update", handleStatusUpdate as EventListener);
     return () => window.removeEventListener("canvas:element-status-update", handleStatusUpdate as EventListener);
   }, []);
-
-
 
   // Consolidated Surgical Update (O(1)ish - precisely targets only changed IDs)
   useEffect(() => {
@@ -1145,49 +665,6 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     });
   }, [bindings, jumpToElement]);
 
-  useEffect(() => {
-    return; // Legacy decoration disabled in favor of EditorBindingOverlay
-    if (!editor || !bindings.length) return;
-
-    // Initial run
-    const initialTimer = setTimeout(decorateBlocks, 500);
-
-    // Debounced observer to avoid mutation cycles
-    let debounceTimer: NodeJS.Timeout;
-
-    const editorElement = document.querySelector(".bn-container");
-    if (!editorElement) return () => clearTimeout(initialTimer);
-
-    const observer = new MutationObserver((mutations) => {
-      // Optimization: Filter out mutations that we ourselves caused
-      const isSelfMutation = mutations.every(m =>
-        (m.target as HTMLElement).classList?.contains('link-indicator') ||
-        (m.target as HTMLElement).classList?.contains('is-linked') ||
-        Array.from(m.addedNodes).some(n => (n as HTMLElement).classList?.contains('link-indicator'))
-      );
-
-      if (isSelfMutation) return;
-
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        decorateBlocks();
-      }, 300); // 300ms debounce
-    });
-
-    if (editorElement) observer.observe(editorElement as Node, {
-      childList: true,
-      subtree: true,
-      attributes: false,
-      characterData: true
-    });
-
-    return () => {
-      clearTimeout(initialTimer);
-      clearTimeout(debounceTimer);
-      observer.disconnect();
-    };
-  }, [bindings, editor, decorateBlocks]);
-
   // 6. Global delegated click listener for linked blocks
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -1224,67 +701,6 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
       }
     }
   }, [activeNodeId, editor]);
-
-  const handleSemanticAction = async (action: string, data?: any) => {
-    console.log("[SemanticAction] Triggered:", action, data);
-
-    // 获取当前 Block
-    const selectedBlocks = editor.getSelection()?.blocks || [];
-    const targetBlock = selectedBlocks[0];
-    console.log("[SemanticAction] Target Block:", targetBlock?.id);
-
-    if (!targetBlock || !targetBlock.id) {
-      toast.error("Please select text within a valid block");
-      return;
-    }
-
-    if (!userId) {
-      console.error("[SemanticAction] Missing userId");
-      toast.error("User ID not found");
-      return;
-    }
-
-    try {
-      if (action === "create") {
-        console.log("[SemanticAction] Calling createManualAnchor...");
-
-        // 解析当前 Block 的纯文本
-        let blockText = "";
-        if (Array.isArray(targetBlock.content)) {
-          blockText = targetBlock.content
-            .map((c: any) => (c.type === "text" ? c.text : ""))
-            .join("");
-        }
-
-        const res = await createManualAnchor({
-          blockId: targetBlock.id,
-          documentId: documentId,
-          userId: userId,
-          title: data.title,
-          type: "concept",
-          startOffset: 0,
-          endOffset: data.title.length,
-          blockText: blockText,
-          blockType: targetBlock.type
-        });
-        console.log("[SemanticAction] Resp:", res);
-        if (res.success) toast.success("Concept created and locked");
-      } else if (action === "accept") {
-        const res = await acceptAiSuggestion(data.id);
-        if (res.success) toast.success("Suggestion accepted");
-        setExistingAnchor(null); // 完成仲裁，清除状态
-      } else if (action === "reject") {
-        const res = await rejectAiSuggestion(data.id);
-        if (res.success) toast.error("Suggestion rejected and blocked");
-        setExistingAnchor(null);
-      } else if (action === "rename") {
-        const res = await renameNode(data.nodeId, data.newTitle);
-        if (res.success) toast.success(`Renamed to "${data.newTitle}"`);
-      }
-    } catch (err) {
-      toast.error("Action failed");
-    }
-  };
 
   // Handle Concept Creation from Selection Toolbar (Closing the Loop)
   const handleCreateConcept = async (text: string) => {
@@ -1395,11 +811,8 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
                               type: "page",
                               props: {
                                 pageId: doc.id,
-                                title: doc.title || "Untitled",
-                                backgroundColor: "default",
-                                textColor: "default",
-                                textAlignment: "left"
-                              }
+                                title: doc.title || "Untitled"
+                              } as any
                             }
                           ],
                           editor.getTextCursorPosition().block,
@@ -1438,7 +851,13 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
         }}
       />
 
-      {/* SemanticSovereigntyPalette removed - functionality moved to SelectionToolbar */}
+      <EditorBindingOverlay
+        bindings={bindings}
+        editor={editor}
+        jumpToElement={jumpToElement}
+        activeBlockId={highlightedBlockId || undefined}
+      />
+
       <AiChatModal
         isOpen={showAiModal}
         onClose={handleCloseAiModal}
@@ -1509,7 +928,7 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
                 type: "excalidraw",
                 props: {
                   data: JSON.stringify(elements)
-                }
+                } as any
               }],
               currentBlock,
               "after"

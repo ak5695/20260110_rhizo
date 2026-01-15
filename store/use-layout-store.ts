@@ -28,7 +28,7 @@ interface LayoutStore {
     openCanvas: () => void;
     closeCanvas: () => void;
     setCanvasFullscreen: (isFullscreen: boolean) => void;
-    setCanvasFullscreen: (isFullscreen: boolean) => void;
+
     splitPercentage: number;
     setSplitPercentage: (percentage: number) => void;
 

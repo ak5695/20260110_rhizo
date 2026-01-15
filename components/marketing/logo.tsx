@@ -12,6 +12,7 @@ export const Logo = () => {
         alt="Logo"
         height="40"
         width="40"
+        priority
         className="dark:hidden"
       />
       <Image
@@ -19,6 +20,7 @@ export const Logo = () => {
         alt="Logo"
         height="40"
         width="40"
+        priority
         className="hidden dark:block"
       />
       <p className={cn("font-semibold", font)}>Rhizo</p>

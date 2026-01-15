@@ -57,10 +57,10 @@ export const ExcalidrawGenerationModal = ({
     const { messages, append, isLoading } = useChat({
         api: "/api/generate-chart",
         body: {},
-        onError: (err) => {
+        onError: (err: any) => {
             console.error("Chart generation error:", err);
         }
-    });
+    } as any) as any;
 
     // Use the streaming hook from "Your Provided Code"
     useExcalidrawStreaming({

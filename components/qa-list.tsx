@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useQaStore, QuestionItem } from "@/store/use-qa-store";
 import { cn } from "@/lib/utils";
 import { X, Sparkles, Check, Trash2, HelpCircle } from "lucide-react";
@@ -15,12 +16,17 @@ interface QaListProps {
 }
 
 export const QaList = ({ onClose, className, onAsk }: QaListProps) => {
-    const { items, removeItem, markAsAsked, markAsUnasked } = useQaStore();
+    const { items, removeItem, markAsAsked, markAsUnasked, hydrate } = useQaStore();
+
+    // Hydrate from DB on mount
+    useEffect(() => {
+        hydrate();
+    }, [hydrate]);
 
     const unaskedItems = items.filter((item) => item.status === "unasked").sort((a, b) => b.createdAt - a.createdAt);
     const askedItems = items.filter((item) => item.status === "asked").sort((a, b) => b.createdAt - a.createdAt);
 
-    const handleAsk = (item: QuestionItem, type: "what" | "why" | "how") => {
+    const handleAsk = (item: QuestionItem, type: "what" | "why" | "how" | "custom") => {
         let prompt = "";
         switch (type) {
             case "what":
@@ -124,8 +130,7 @@ export const QaList = ({ onClose, className, onAsk }: QaListProps) => {
                                                     variant="outline"
                                                     className="h-6 text-[10px] px-2 capitalize hover:text-orange-600 hover:border-orange-300 bg-background"
                                                     onClick={() => {
-                                                        onAsk(item.text, "custom");
-                                                        markAsAsked(item.id);
+                                                        handleAsk(item, "custom");
                                                     }}
                                                 >
                                                     直接问

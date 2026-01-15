@@ -27,7 +27,7 @@ interface ConnectionPoint {
 
 interface ConnectionPointsOverlayProps {
     excalidrawAPI: any;
-    containerRef: React.RefObject<HTMLDivElement>;
+    containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const ConnectionPointsOverlay = ({ excalidrawAPI, containerRef }: ConnectionPointsOverlayProps) => {
@@ -37,7 +37,7 @@ export const ConnectionPointsOverlay = ({ excalidrawAPI, containerRef }: Connect
     const [drawingArrow, setDrawingArrow] = useState<any>(null);
     const [startPoint, setStartPoint] = useState<ConnectionPoint | null>(null);
     const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
-    const rafRef = useRef<number>();
+    const rafRef = useRef<number | null>(null);
     const sourceElementRef = useRef<any>(null);
 
     // Calculate connection points for a selected element

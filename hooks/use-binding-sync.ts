@@ -11,54 +11,90 @@ export function useBindingSync(documentId: string) {
     const setBindings = useBindingStore((state) => state.setBindings);
     const bindings = useBindingStore((state) => state.bindings);
 
-    const loadBindings = useCallback(async () => {
+    // Unified sync logic
+    const sync = useCallback(async (options: { skipCache?: boolean, delayServer?: boolean } = {}) => {
         if (!documentId) return;
 
-        console.log(`[BindingSync] Starting sync for: ${documentId}`);
-
-        // 1. Instant Cache Load
-        try {
-            const cached = await bindingCache.get(documentId);
-            if (cached) {
-                console.log(`[BindingSync] Cache hit: ${cached.length} bindings`);
-                setBindings(cached);
-                setIsLoading(false); // Valid content shown
+        // 1. Cache Load (Immediate, unless skipped)
+        if (!options.skipCache) {
+            try {
+                const cached = await bindingCache.get(documentId);
+                // Check if we are still active (state update safety)
+                // Note: We can't easily check "active" deep here without ref, but 
+                // Zustand store updates are generally safe or idempotent.
+                if (cached) {
+                    console.log(`[BindingSync] Cache hit: ${cached.length} bindings`);
+                    setBindings(cached);
+                    setIsLoading(false);
+                }
+            } catch (e) {
+                console.warn("[BindingSync] Cache read error", e);
             }
-        } catch (e) {
-            console.warn("[BindingSync] Cache read error", e);
         }
 
-        // 2. Network Fetch (Stale-while-revalidate)
+        // 2. Server Fetch (Delayed/Debounced check happens in useEffect)
+        // We define the fetcher here but invoke it later
+    }, [documentId, setBindings]);
+
+    // Manual refresh (instant server fetch)
+    const refresh = useCallback(async () => {
         try {
             const result = await getDocumentBindings(documentId);
             if (result.success && result.bindings) {
-                const serverBindings = result.bindings;
-
-                // Update Store
-                setBindings(serverBindings);
-
-                // Update Cache
-                await bindingCache.set(documentId, serverBindings);
-                console.log(`[BindingSync] Synced from server: ${serverBindings.length} bindings`);
+                setBindings(result.bindings);
+                await bindingCache.set(documentId, result.bindings);
+                console.log(`[BindingSync] Refreshed: ${result.bindings.length} bindings`);
             }
         } catch (e) {
-            console.error("[BindingSync] Server fetch error", e);
-        } finally {
-            setIsLoading(false);
+            console.error("[BindingSync] Refresh error", e);
         }
     }, [documentId, setBindings]);
 
-    // Initial load
+    // Initial Load Effect with Debounce
     useEffect(() => {
-        loadBindings();
-    }, [loadBindings]);
+        let isActive = true;
 
-    // Listen for refresh events (e.g., after new binding created)
+        // 1. Immediate Cache Load
+        bindingCache.get(documentId).then(cached => {
+            if (isActive && cached) {
+                setBindings(cached);
+                setIsLoading(false);
+            }
+        });
+
+        // 2. Debounced Server Fetch
+        // Wait 300ms before hitting server. If user navigates away, this cancelled.
+        const timer = setTimeout(async () => {
+            if (!isActive) return;
+
+            try {
+                const result = await getDocumentBindings(documentId);
+                if (!isActive) return; // Ignore if stale
+
+                if (result.success && result.bindings) {
+                    setBindings(result.bindings);
+                    await bindingCache.set(documentId, result.bindings);
+                    console.log(`[BindingSync] Synced from server: ${result.bindings.length} bindings`);
+                }
+            } catch (e) {
+                if (isActive) console.error("[BindingSync] Server fetch error", e);
+            } finally {
+                if (isActive) setIsLoading(false);
+            }
+        }, 300); // 300ms debounce
+
+        return () => {
+            isActive = false;
+            clearTimeout(timer);
+        };
+    }, [documentId, setBindings]);
+
+    // Listen for refresh events
     useEffect(() => {
-        const handleRefresh = () => loadBindings();
+        const handleRefresh = () => refresh();
         window.addEventListener("refresh-bindings", handleRefresh);
         return () => window.removeEventListener("refresh-bindings", handleRefresh);
-    }, [loadBindings]);
+    }, [refresh]);
 
     return { isLoading, bindings };
 }
