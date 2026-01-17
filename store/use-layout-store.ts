@@ -35,6 +35,10 @@ interface LayoutStore {
     // Q&A List
     isQaListOpen: boolean;
     toggleQaList: () => void;
+
+    // Document Outline Data (Decoupled from Page Rendering)
+    editorDocument: any[];
+    setEditorDocument: (doc: any[]) => void;
 }
 
 export const useLayoutStore = create<LayoutStore>((set, get) => ({
@@ -42,6 +46,9 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
     isCanvasOpen: true,
     isCanvasFullscreen: false,
     isOutlineOpen: false,
+
+    editorDocument: [],
+    setEditorDocument: (doc) => set({ editorDocument: doc }),
 
     /**
      * Toggle canvas visibility
@@ -142,4 +149,7 @@ export const useQaListOpen = () =>
 
 export const useSplitPercentage = () =>
     useLayoutStore((state) => state.splitPercentage);
+
+export const useEditorDocument = () =>
+    useLayoutStore((state) => state.editorDocument);
 

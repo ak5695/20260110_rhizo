@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { useTheme } from "next-themes";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
@@ -37,7 +37,7 @@ interface EditorProps {
   onDocumentChange?: (document: any) => void; // Expose document for outline
 }
 
-const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocumentChange }: EditorProps) => {
+const EditorComponent = ({ onChange, initialContent, editable, userId, documentId, onDocumentChange }: EditorProps) => {
   const { resolvedTheme } = useTheme();
   const [activeSelection, setActiveSelection] = useState("");
   const [existingAnchor, setExistingAnchor] = useState<any>(null);
@@ -56,6 +56,34 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
 
   const router = useRouter();
 
+  // DEBUG: Monitor focus loss events
+  useEffect(() => {
+    const handleFocus = () => console.log("[FocusMonitor] Window Focused");
+    const handleBlur = (e: FocusEvent) => {
+      console.log("[FocusMonitor] Window Blurred", {
+        activeElement: document.activeElement,
+        relatedTarget: e.relatedTarget
+      });
+      // console.trace("[FocusMonitor] Blur Trace");
+    };
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
+
+  // DEBUG: Monitor Component Remounts
+  // DEBUG: Monitor Component Remounts
+  useEffect(() => {
+    // console.log("[Editor] Component Mounted/Remounted");
+    return () => {
+      // console.log("[Editor] Component Unmounted");
+    };
+  }, []);
+
   // Use Zustand navigation store (Hoisted)
   const blockTarget = useBlockTarget();
   const { clearBlockTarget, jumpToElement, highlightedElementId, highlightedBlockId } = useNavigationStore();
@@ -63,7 +91,8 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
   // Store cursor block ID for restoration after AI modal closes
   const savedCursorBlockRef = useRef<string | null>(null);
 
-  const handleUpload = async (file: File) => {
+  // Stabilize upload handler to prevent editor recreation
+  const handleUpload = useCallback(async (file: File) => {
     const { getUploadUrl } = await import("@/actions/storage");
     const key = `${Date.now()}-${file.name}`;
     const { url, publicUrl } = await getUploadUrl(key, file.type);
@@ -75,14 +104,14 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     });
 
     return publicUrl;
-  };
+  }, []);
 
   // Real-time content sync to canvas
   const debouncedSync = useCallback(
     debounce((blockId: string, text: string) => {
-      window.dispatchEvent(new CustomEvent('document:block-change', {
-        detail: { blockId, text }
-      }));
+      // window.dispatchEvent(new CustomEvent('document:block-change', {
+      //   detail: { blockId, text }
+      // }));
     }, 500),
     []
   );
@@ -92,39 +121,141 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
   // Flag to ignore changes triggered by remote updates
   const isRemoteUpdateRef = useRef(false);
 
+  // Stabilize initial content to prevent editor re-construction on every render
+  const stableInitialContent = useMemo(() => {
+    // 1. HMR Recovery: Check global backup first
+    // 1. HMR Recovery: Check sessionStorage backup first (More durable than window)
+    if (typeof window !== "undefined") {
+      try {
+        const backupStr = sessionStorage.getItem(`JOTION_BACKUP_${documentId}`);
+        if (backupStr) {
+          const backup = JSON.parse(backupStr);
+          if (Date.now() - backup.timestamp < 30000) { // 30s window (survives full reload)
+            console.log("[Editor] Recovery: Restoring content from sessionStorage");
+            return typeof backup.content === 'string' ? JSON.parse(backup.content) : backup.content;
+          }
+        }
+      } catch (e) { console.error("Backup restore failed", e); }
+    }
+    // 2. Fallback to props
+    return initialContent ? JSON.parse(initialContent) : undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps ensures this never changes after mount
+
   const editor = useCreateBlockNote({
     schema,
-    initialContent: initialContent ? JSON.parse(initialContent) : undefined,
+    initialContent: stableInitialContent,
     uploadFile: handleUpload,
   });
 
-  // 2. Sync content from server/cache (Hydration)
+  // 2. Focus Restoration (Surviving HMR/Fast Refresh)
   useEffect(() => {
-    if (!editor || !initialContent) return;
+    if (!editor) return;
 
-    // Don't overwrite if user has edited recently (within 5 seconds)
-    // This allows local edits to take precedence over potentially stale server data
-    if (Date.now() - lastEditTimeRef.current < 5000) {
-      return;
-    }
+    // A: Check if we should restore focus (on mount)
+    // A: Check if we should restore focus (on mount)
+    if (typeof window !== "undefined") {
+      const activeState = sessionStorage.getItem(`JOTION_FOCUS_${documentId}`);
 
-    const currentJson = JSON.stringify(editor.document);
+      if (activeState) {
+        try {
+          const { timestamp, blockId, wasFocused } = JSON.parse(activeState);
+          const isRecent = Date.now() - timestamp < 30000;
 
-    // Only update if content is actually different
-    if (currentJson !== initialContent) {
-      console.log("[Editor] Hydrating new content (Cache/Server update)");
-      try {
-        const newBlocks = JSON.parse(initialContent);
+          if (wasFocused && isRecent) {
+            console.log("[Editor] Focus Recovery: Restoring focus/cursor from SessionStorage");
 
-        // Set flag to prevent this update from triggering onChange -> server save loop
-        isRemoteUpdateRef.current = true;
-
-        editor.replaceBlocks(editor.document, newBlocks);
-      } catch (e) {
-        console.error("[Editor] Failed to parse content:", e);
+            // Execute restoration
+            setTimeout(() => {
+              editor.focus();
+              if (blockId) {
+                const block = editor.getBlock(blockId);
+                if (block) {
+                  editor.setTextCursorPosition(block, "end");
+                }
+              }
+            }, 100);
+          }
+        } catch (e) { console.error(e); }
       }
     }
-  }, [editor, initialContent]);
+
+    // B: Track focus state
+
+    const cleanups: (() => void)[] = [];
+
+    // Track via selection change (most reliable for "user is typing")
+    // Track via selection change (most reliable for "user is typing")
+    cleanups.push(editor.onSelectionChange(() => {
+      // Persist Focus State into SessionStorage
+      if (editor.isFocused()) {
+        try {
+          const cursor = editor.getTextCursorPosition();
+          const state = {
+            timestamp: Date.now(),
+            wasFocused: true,
+            blockId: cursor.block?.id
+          };
+          sessionStorage.setItem(`JOTION_FOCUS_${documentId}`, JSON.stringify(state));
+        } catch (e) { }
+      }
+    }));
+
+    // Track via DOM events
+    const domElement = document.querySelector(".bn-editor");
+    if (domElement) {
+      const onFocus = (e: FocusEvent) => {
+        console.log(`[EditorMonitor-${editor._instanceId}] Editor Focused`, {
+          target: (e.target as HTMLElement).tagName,
+          relatedTarget: (e.relatedTarget as HTMLElement)?.tagName
+        });
+
+        // Fallback tracking
+        sessionStorage.setItem(`JOTION_FOCUS_${documentId}`, JSON.stringify({
+          timestamp: Date.now(),
+          wasFocused: true
+        }));
+      };
+
+      const onBlur = (e: FocusEvent) => {
+        console.log(`[EditorMonitor-${editor._instanceId}] Editor Blurred`, {
+          target: (e.target as HTMLElement).tagName,
+          relatedTarget: (e.relatedTarget as HTMLElement)?.tagName,
+          newActiveElement: document.activeElement?.tagName
+        });
+      };
+
+      const onMouseDown = (e: MouseEvent) => {
+        console.log(`[EditorMonitor-${editor._instanceId}] Mouse Down`, {
+          target: (e.target as HTMLElement).tagName,
+          blockId: (e.target as HTMLElement).closest('[data-id]')?.getAttribute('data-id')
+        });
+      };
+
+      const onInput = (e: Event) => {
+        console.log(`[EditorMonitor-${editor._instanceId}] Input Event`, {
+          type: e.type,
+          // text: (e as any).data
+        });
+      };
+
+      domElement.addEventListener("focus", onFocus as any, true);
+      domElement.addEventListener("blur", onBlur as any, true); // capture
+      domElement.addEventListener("mousedown", onMouseDown as any, true);
+      domElement.addEventListener("input", onInput as any, true);
+
+      cleanups.push(() => {
+        domElement.removeEventListener("focus", onFocus as any, true);
+        domElement.removeEventListener("blur", onBlur as any, true);
+        domElement.removeEventListener("mousedown", onMouseDown as any, true);
+        domElement.removeEventListener("input", onInput as any, true);
+      });
+    }
+
+    return () => {
+      cleanups.forEach(fn => fn());
+    };
+  }, [editor]);
 
   // Handle space key on empty line to open AI modal
   useEffect(() => {
@@ -134,17 +265,19 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
       // Don't trigger if AI modal is open - handled by modal itself
       if (showAiModal) return;
 
+      // DISABLE Space-to-AI completely as per user request to fix focus loss
+      /*
       if (event.key === " " && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
         const cursorPosition = editor.getTextCursorPosition();
         const currentBlock = cursorPosition.block;
 
-        // Get block text content
+        // Robust content extraction
         let blockText = "";
         if (currentBlock.content && Array.isArray(currentBlock.content)) {
           blockText = currentBlock.content.map((c: any) => c.text || "").join("");
         }
 
-        // Check if current line is empty
+        // Only trigger if block is strictly empty
         if (blockText.trim() === "") {
           event.preventDefault();
           event.stopPropagation();
@@ -166,6 +299,7 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
           setShowAiModal(true);
         }
       }
+      */
     };
 
     const editorElement = document.querySelector(".bn-container");
@@ -371,6 +505,9 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
   // 注入上下文到 editor 实例，以便自定义 Block 访问
   useEffect(() => {
     if (editor) {
+      if (!(editor as any)._instanceId) {
+        (editor as any)._instanceId = Math.random().toString(36).slice(2, 7);
+      }
       (editor as any)._documentId = documentId;
       (editor as any)._userId = userId;
     }
@@ -747,93 +884,121 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
     }
   };
 
+  // Sync bindings to ref to keep callback stable
+  const bindingsRef = useRef(bindings);
+  useEffect(() => {
+    bindingsRef.current = bindings;
+  }, [bindings]);
+
+  // Memoize the change handler to prevent prop churn on BlockNoteView
+  const handleEditorChange = useCallback(() => {
+    // Track last edit time to prevent overwriting user changes with server data
+    // And ignore changes triggered by remote updates
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+    lastEditTimeRef.current = Date.now();
+
+    const content = JSON.stringify(editor.document);
+
+    // BACKUP for HMR/Reload Survival
+    if (typeof window !== "undefined") {
+      const backup = {
+        documentId,
+        content,
+        timestamp: Date.now()
+      };
+      sessionStorage.setItem(`JOTION_BACKUP_${documentId}`, JSON.stringify(backup));
+    }
+
+    onChange(content);
+
+    // Expose document for outline
+    /*
+    if (onDocumentChange) {
+      onDocumentChange(editor.document);
+    }
+    */
+
+    // Real-time Content Sync to Canvas (Enterprise Feature)
+    try {
+      const cursor = editor.getTextCursorPosition();
+      if (cursor.block) {
+        const block = cursor.block;
+        // Use Ref to avoid recreating callback on binding updates
+        const isBound = bindingsRef.current.some(b => b.blockId === block.id);
+        if (isBound) {
+          // Extract text robustly
+          let text = "";
+          if (Array.isArray(block.content)) {
+            text = block.content.map(c => (c as any).text || "").join("");
+          }
+          debouncedSync(block.id, text);
+        }
+      }
+    } catch (e) {
+      // Silent catch for cursor issues
+    }
+  }, [editor, onChange, debouncedSync]); // Removed bindings from dependencies
+
+  // Memoize slash menu items to prevent controller re-init
+  const handleGetItems = useCallback(async (query: string) => {
+    return filterSuggestionItems(
+      [
+        ...getDefaultReactSlashMenuItems(editor),
+        {
+          title: "Sub-page",
+          onItemClick: async () => {
+            const promise = serverCreateDocument({ title: "Untitled", parentDocumentId: documentId });
+
+            toast.promise(promise, {
+              loading: "Creating sub-page...",
+              success: (doc) => {
+                // Local insertion for immediate feedback
+                editor.insertBlocks(
+                  [
+                    {
+                      type: "page",
+                      props: {
+                        pageId: doc.id,
+                        title: doc.title || "Untitled"
+                      } as any
+                    }
+                  ],
+                  editor.getTextCursorPosition().block,
+                  "after"
+                );
+
+                router.push(`/documents/${doc.id}`);
+                return "Sub-page created";
+              },
+              error: "Failed to create sub-page"
+            });
+          },
+          aliases: ["page", "subpage", "new"],
+          group: "Basic Blocks",
+          icon: <FilePlus className="h-4 w-4" />,
+          subtext: "Create a nested sub-page",
+        } as any
+      ],
+      query
+    );
+  }, [editor, documentId, router]);
+
   return (
     <div className="relative group/editor">
       <BlockNoteView
         editable={editable}
         editor={editor}
-        onChange={() => {
-          // Track last edit time to prevent overwriting user changes with server data
-          // And ignore changes triggered by remote updates
-          if (isRemoteUpdateRef.current) {
-            isRemoteUpdateRef.current = false;
-            return;
-          }
-          lastEditTimeRef.current = Date.now();
-
-          onChange(JSON.stringify(editor.document));
-          // Expose document for outline
-          if (onDocumentChange) {
-            onDocumentChange(editor.document);
-          }
-
-          // Real-time Content Sync to Canvas (Enterprise Feature)
-          try {
-            const cursor = editor.getTextCursorPosition();
-            if (cursor.block) {
-              const block = cursor.block;
-              const isBound = bindings.some(b => b.blockId === block.id);
-              if (isBound) {
-                // Extract text robustly
-                let text = "";
-                if (Array.isArray(block.content)) {
-                  text = block.content.map(c => (c as any).text || "").join("");
-                }
-                debouncedSync(block.id, text);
-              }
-            }
-          } catch (e) {
-            // Silent catch for cursor issues
-          }
-        }}
+        onChange={handleEditorChange}
         theme={resolvedTheme === "dark" ? "dark" : "light"}
         formattingToolbar={false}
       >
         <FormattingToolbarController />
         <SuggestionMenuController
           triggerCharacter="/"
-          getItems={async (query) =>
-            filterSuggestionItems(
-              [
-                ...getDefaultReactSlashMenuItems(editor),
-                {
-                  title: "Sub-page",
-                  onItemClick: async () => {
-                    const promise = serverCreateDocument({ title: "Untitled", parentDocumentId: documentId });
-
-                    toast.promise(promise, {
-                      loading: "Creating sub-page...",
-                      success: (doc) => {
-                        // Local insertion for immediate feedback
-                        editor.insertBlocks(
-                          [
-                            {
-                              type: "page",
-                              props: {
-                                pageId: doc.id,
-                                title: doc.title || "Untitled"
-                              } as any
-                            }
-                          ],
-                          editor.getTextCursorPosition().block,
-                          "after"
-                        );
-
-                        router.push(`/documents/${doc.id}`);
-                        return "Sub-page created";
-                      },
-                      error: "Failed to create sub-page"
-                    });
-                  },
-                  aliases: ["page", "subpage", "new"],
-                  group: "Basic Blocks",
-                  icon: <FilePlus className="h-4 w-4" />,
-                  subtext: "Create a nested sub-page",
-                },
-              ],
-              query
-            )
-          }
+          getItems={handleGetItems}
         />
       </BlockNoteView>
 
@@ -936,8 +1101,15 @@ const Editor = ({ onChange, initialContent, editable, userId, documentId, onDocu
           }
         }}
       />
-    </div>
+    </div >
   );
 };
+
+// Export Memoized Component to prevent re-renders from Parent Layout updates
+export const Editor = memo(EditorComponent, (prev, next) => {
+  // CRITICAL: Only re-render if documentId changes. 
+  // Ignore content/user/onChange updates to prevent focus loss during typing.
+  return prev.documentId === next.documentId && prev.userId === next.userId;
+});
 
 export default Editor;

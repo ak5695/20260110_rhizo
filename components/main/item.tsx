@@ -83,9 +83,6 @@ export const Item = ({
 
     const tempId = crypto.randomUUID();
 
-    // ⚡ CRITICAL: Immediate Jump
-    router.push(`/documents/${tempId}`);
-
     // ⚡ Phase 2: Optimistic UI for Sub-pages
     if (session?.user) {
       const optimisticDoc = {
@@ -97,6 +94,8 @@ export const Item = ({
         isArchived: false,
         isPublished: false,
         parentDocumentId: id,
+        // ⚡ Populate content so page.tsx accepts it immediately without skeleton
+        content: JSON.stringify([{ type: "paragraph", content: [] }]),
       };
 
       setDocument(optimisticDoc);
@@ -106,6 +105,9 @@ export const Item = ({
         return [optimisticDoc, ...(current || [])];
       }, false);
     }
+
+    // ⚡ CRITICAL: Immediate Jump
+    router.push(`/documents/${tempId}`);
 
     if (!expanded) {
       onExpand?.();

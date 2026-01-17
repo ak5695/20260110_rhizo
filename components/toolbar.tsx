@@ -169,6 +169,11 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
     toast.success("Title updated!");
   };
 
+  // No more mode switching - Always editable unless preview
+  // const [isEditing, setIsEditing] = useState(false); 
+
+  // ...
+
   return (
     <div className="pl-[54px] group relative">
       {!!icon && !preview && (
@@ -272,11 +277,18 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
           </Popover>
         )}
       </div>
-      {isEditing && !preview ? (
+
+      {preview ? (
+        <div className={cn(
+          "pb-2 text-4xl font-bold break-words outline-none text-[#3F3F3F] dark:text-[#CFCFCF]",
+          isPlaceholder && "text-[#9B9B9B] dark:text-[#5C5C5C]"
+        )}>
+          {displayTitle}
+        </div>
+      ) : (
         <div className="relative w-full">
           <TextareaAutosize
             ref={inputRef}
-            onBlur={disableInput}
             onKeyDown={onKeyDown}
             value={isPlaceholder ? "" : rawTitle}
             placeholder={PLACEHOLDER_TITLE}
@@ -291,26 +303,6 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
                 <div className="h-2 w-2 rounded-full bg-orange-400 animate-pulse" />
               )}
               <span>{saveStatus === "saving" ? "Saving progress..." : "Changes pending..."}</span>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="relative group/title">
-          <div
-            onClick={enableInput}
-            className={cn(
-              "pb-2 text-4xl font-bold break-words outline-none cursor-text",
-              isPlaceholder
-                ? "text-[#9B9B9B] dark:text-[#5C5C5C]"
-                : "text-[#3F3F3F] dark:text-[#CFCFCF]"
-            )}
-          >
-            {displayTitle}
-          </div>
-          {saveStatus !== "idle" && !isEditing && (
-            <div className="absolute -bottom-4 left-0 flex items-center gap-x-2 text-[10px] text-muted-foreground opacity-70">
-              <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              <span>Synchronizing...</span>
             </div>
           )}
         </div>

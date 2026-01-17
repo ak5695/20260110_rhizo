@@ -21,8 +21,10 @@ const nextConfig = {
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   experimental: {
+    reactStrictMode: false,
     // missingSuspenseWithCSRBailout: false,
   },
+  // Force restart: 2026-01-17-fix-hmr
   // Skip image optimization for external URLs that may resolve to private IPs
   async headers() {
     return [];

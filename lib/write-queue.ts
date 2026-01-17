@@ -54,8 +54,8 @@ class WriteQueueManager {
 
   // Configuration
   private readonly DEBOUNCE_DELAY = {
-    title: 800,      // 800ms for title (Enterprise Grade - accommodates IME/typing)
-    content: 1000,   // 1s for content
+    title: 500,      // Reduced for snappier saves
+    content: 500,    // Reduced to minimize data loss risk on rapid refresh
     icon: 0,         // Immediate
     coverImage: 0,   // Immediate
     default: 500,
@@ -67,7 +67,8 @@ class WriteQueueManager {
   constructor() {
     if (typeof window !== "undefined") {
       window.addEventListener("beforeunload", () => this.flushAll());
-      setInterval(() => this.flushAll(), this.FORCE_FLUSH_DELAY);
+      // Disabled auto-flush interval to prevent log spam and potential cycles
+      // setInterval(() => this.flushAll(), this.FORCE_FLUSH_DELAY);
     }
   }
 
@@ -239,6 +240,8 @@ class WriteQueueManager {
    * Flush all pending writes (called on beforeunload)
    */
   flushAll(): void {
+    if (this.pendingWrites.size === 0) return;
+
     console.log(`[WriteQueue] Flushing ${this.pendingWrites.size} pending writes...`);
 
     // Use sendBeacon for guaranteed delivery on page unload

@@ -1,15 +1,37 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getDocumentBindings } from "@/actions/canvas-bindings";
 import { bindingCache } from "@/lib/cache/binding-cache";
 import { useBindingStore } from "@/store/use-binding-store";
 
 /**
  * Sync bindings with cache-first strategy
+ * 
+ * Optimized to prevent redundant updates which can cause editor focus loss.
  */
 export function useBindingSync(documentId: string) {
     const [isLoading, setIsLoading] = useState(true);
     const setBindings = useBindingStore((state) => state.setBindings);
     const bindings = useBindingStore((state) => state.bindings);
+
+    // Track last applied data to prevent identical updates (which cause re-renders/focus loss)
+    const lastAppliedDataRef = useRef<string>("");
+
+    const safeSetBindings = useCallback((data: any[]) => {
+        // Simple but effective deep comparison for purely serializable data
+        // We sort by ID to ensure order doesn't affect comparison
+        const sortedData = [...data].sort((a, b) => a.id.localeCompare(b.id));
+        const hash = JSON.stringify(sortedData); // Stable-ish stringify
+
+        if (hash !== lastAppliedDataRef.current) {
+            console.log(`[BindingSync] Updating bindings (changed): ${data.length} items`);
+            setBindings(data);
+            lastAppliedDataRef.current = hash;
+            return true;
+        } else {
+            console.log(`[BindingSync] Skipping update (identical data)`);
+            return false;
+        }
+    }, [setBindings]);
 
     // Unified sync logic
     const sync = useCallback(async (options: { skipCache?: boolean, delayServer?: boolean } = {}) => {
@@ -19,12 +41,8 @@ export function useBindingSync(documentId: string) {
         if (!options.skipCache) {
             try {
                 const cached = await bindingCache.get(documentId);
-                // Check if we are still active (state update safety)
-                // Note: We can't easily check "active" deep here without ref, but 
-                // Zustand store updates are generally safe or idempotent.
                 if (cached) {
-                    console.log(`[BindingSync] Cache hit: ${cached.length} bindings`);
-                    setBindings(cached);
+                    safeSetBindings(cached);
                     setIsLoading(false);
                 }
             } catch (e) {
@@ -34,30 +52,32 @@ export function useBindingSync(documentId: string) {
 
         // 2. Server Fetch (Delayed/Debounced check happens in useEffect)
         // We define the fetcher here but invoke it later
-    }, [documentId, setBindings]);
+    }, [documentId, safeSetBindings]);
 
     // Manual refresh (instant server fetch)
     const refresh = useCallback(async () => {
         try {
             const result = await getDocumentBindings(documentId);
             if (result.success && result.bindings) {
-                setBindings(result.bindings);
-                await bindingCache.set(documentId, result.bindings);
+                if (safeSetBindings(result.bindings)) {
+                    await bindingCache.set(documentId, result.bindings);
+                }
                 console.log(`[BindingSync] Refreshed: ${result.bindings.length} bindings`);
             }
         } catch (e) {
             console.error("[BindingSync] Refresh error", e);
         }
-    }, [documentId, setBindings]);
+    }, [documentId, safeSetBindings]);
 
     // Initial Load Effect with Debounce
     useEffect(() => {
         let isActive = true;
+        lastAppliedDataRef.current = ""; // Reset on doc ID change
 
         // 1. Immediate Cache Load
         bindingCache.get(documentId).then(cached => {
             if (isActive && cached) {
-                setBindings(cached);
+                safeSetBindings(cached);
                 setIsLoading(false);
             }
         });
@@ -72,9 +92,14 @@ export function useBindingSync(documentId: string) {
                 if (!isActive) return; // Ignore if stale
 
                 if (result.success && result.bindings) {
-                    setBindings(result.bindings);
+                    const changed = safeSetBindings(result.bindings);
+                    // Always cache latest server data? Or only if changed?
+                    // Better to always cache to keep it fresh
                     await bindingCache.set(documentId, result.bindings);
-                    console.log(`[BindingSync] Synced from server: ${result.bindings.length} bindings`);
+
+                    if (changed) {
+                        console.log(`[BindingSync] Synced from server: ${result.bindings.length} bindings`);
+                    }
                 }
             } catch (e) {
                 if (isActive) console.error("[BindingSync] Server fetch error", e);
@@ -87,7 +112,7 @@ export function useBindingSync(documentId: string) {
             isActive = false;
             clearTimeout(timer);
         };
-    }, [documentId, setBindings]);
+    }, [documentId, safeSetBindings]);
 
     // Listen for refresh events
     useEffect(() => {

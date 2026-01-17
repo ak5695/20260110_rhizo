@@ -32,20 +32,24 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
     params.documentId ? ["document", params.documentId] : null,
     ([, id]) => getById(id as string),
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: false, // Prevent background refetching stealing focus
       fallbackData: initialData
     }
   );
 
-  // Listen for document changes to refresh the navbar title
+  // Removed broad 'documents-changed' listener to prevent aggressive SWR revalidation
+  // which can cause focus loss if Navbar/Title re-renders while typing.
+  // The Title component now uses Zustand for real-time updates.
+  /*
   useEffect(() => {
     const handleDocumentsChanged = () => {
-      mutate(); // Revalidate the SWR cache immediately
+      mutate();
     };
 
     window.addEventListener("documents-changed", handleDocumentsChanged);
     return () => window.removeEventListener("documents-changed", handleDocumentsChanged);
   }, [mutate]);
+  */
 
   if (document === undefined) {
     return null;

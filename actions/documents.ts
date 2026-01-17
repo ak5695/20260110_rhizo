@@ -417,8 +417,29 @@ export const update = async (args: {
             await syncBlocks(id, updates.content);
         }
 
-        revalidatePath(`/documents/${id}`)
-        revalidatePath("/documents")
+        // ⚡ Performance Optimization:
+        const affectsMetadata =
+            updates.title !== undefined ||
+            updates.icon !== undefined ||
+            updates.coverImage !== undefined ||
+            updates.isPublished !== undefined;
+
+        // DEBUG LOGGING
+        if (affectsMetadata) {
+            console.log("[UpdateAction] Triggering revalidatePath due to metadata change:",
+                Object.keys(updates).filter(k =>
+                    ['title', 'icon', 'coverImage', 'isPublished'].includes(k)
+                )
+            );
+        } else {
+            // console.log("[UpdateAction] Skipping revalidatePath (Content only)");
+        }
+
+        if (affectsMetadata) {
+            revalidatePath(`/documents/${id}`)
+            revalidatePath("/documents")
+        }
+
         return result.data
     }, { maxAttempts: 3, baseDelay: 200 })
 }

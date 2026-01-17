@@ -8,6 +8,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { writeQueue } from "@/lib/write-queue";
 import { useDocumentStore } from "@/store/use-document-store";
+import { useCanvasOpen, useCanvasFullscreen } from "@/store/use-layout-store";
+import { EditorSkeleton, CanvasSkeleton, SplitSkeleton } from "@/components/loading-skeletons";
 import { DocumentEditorLayout } from "@/components/document/document-editor-layout";
 
 export default function DocumentIdPage() {
@@ -17,10 +19,16 @@ export default function DocumentIdPage() {
   const lastDocumentIdRef = useRef<string | null>(null);
   const activeIdRef = useRef<string | string[] | null>(null);
 
+  // Layout State for Context-Aware Skeletons
+  const isCanvasOpen = useCanvasOpen();
+  const isCanvasFullscreen = useCanvasFullscreen();
+
+  // Sync active ID ref immediately
   // Sync active ID ref immediately
   if (activeIdRef.current !== documentId) {
-    activeIdRef.current = documentId;
+    activeIdRef.current = documentId ?? null;
   }
+
 
   // ⚡ Instant Document Loading - Cache-First Strategy
   // Goal: NEVER show loading skeleton when switching between cached documents
@@ -39,14 +47,14 @@ export default function DocumentIdPage() {
       if (activeIdRef.current !== documentId) return;
 
       // 【Step 1】立即检查 Zustand Store（同步，零延迟）
+      // 使用 useLayoutEffect 确保在绘制前获取数据
       const storeDoc = useDocumentStore.getState().documents.get(documentId);
-      if (storeDoc && isMounted && activeIdRef.current === documentId) {
-        // Only use store doc if it has content (or if we accept partials)
-        // Check for content to avoid "empty" flash if sidebar only provided title
+      if (storeDoc && activeIdRef.current === documentId) {
         if (storeDoc.content) {
-          console.log("[DocumentPage] Instant from Zustand Store");
+          // Sync immediately if we have it
           setDocument(storeDoc);
           documentVersionRef.current = storeDoc.version || 0;
+          return; // Skip other steps if we have authoritative data
         }
       }
 
@@ -86,8 +94,14 @@ export default function DocumentIdPage() {
           if (!isMounted || activeIdRef.current !== documentId) return;
 
           if (serverDoc) {
-            // Only update if server has newer version or we are missing content
-            if (serverDoc.version >= documentVersionRef.current || !document?.content) {
+            // Only update if server has newer version, OR if we are missing content (e.g. loaded from partial list)
+            // CRITICAL: We use '>' instead of '>=' to avoid re-rendering if version is identical.
+            // This prevents "early focus loss" caused by redundant hydration of same data.
+            if (serverDoc.version > documentVersionRef.current || !document?.content) {
+
+              // Double check content deep equality if version is strictly greater but we want to be extra safe?
+              // No, version should be the source of truth.
+
               setDocument(serverDoc);
               documentVersionRef.current = serverDoc.version;
 
@@ -96,6 +110,8 @@ export default function DocumentIdPage() {
               documentCache.set(documentId, serverDoc);
 
               console.log("[DocumentPage] Synced from server, version:", serverDoc.version);
+            } else {
+              console.log(`[DocumentPage] Server version ${serverDoc.version} matches/older than current ${documentVersionRef.current}. Skipping update.`);
             }
           } else if (document === undefined && isMounted) {
             // Document not found (and currently showing skeleton) -> switch to Not Found
@@ -151,26 +167,16 @@ export default function DocumentIdPage() {
 
   // Fast Shell: If document is still loading, show the basic structure immediately
   // to prevent the "Blank Screen" flash that users hate.
+  // Fast Shell: If document is still loading, show the basic structure immediately
+  // to prevent the "Blank Screen" flash that users hate.
   if (document === undefined) {
-    return (
-      <div className="relative h-full overflow-hidden bg-background dark:bg-[#1F1F1F]">
-        <div className="absolute left-0 top-0 bottom-0 right-0 flex flex-col overflow-hidden">
-          <div className="h-12 border-b bg-background/50 flex items-center px-4">
-            <Skeleton className="h-5 w-32" />
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <div className="pb-40">
-              <Cover.Skeleton />
-              <div className="md:max-w-3xl lg:max-w-4xl mx-auto mt-10 space-y-4 px-8">
-                <Skeleton className="h-10 w-[60%]" />
-                <Skeleton className="h-4 w-[80%]" />
-                <Skeleton className="h-4 w-[40%]" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    if (isCanvasFullscreen) {
+      return <CanvasSkeleton />;
+    }
+    if (isCanvasOpen) {
+      return <SplitSkeleton />;
+    }
+    return <EditorSkeleton />;
   }
 
   if (document === null) {

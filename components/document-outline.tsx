@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { List, ChevronRight, X } from "lucide-react";
+import { useEditorDocument } from "@/store/use-layout-store";
 
 interface HeadingItem {
   id: string;
@@ -11,12 +12,12 @@ interface HeadingItem {
 }
 
 interface DocumentOutlineProps {
-  editorDocument: any; // BlockNote document
-  className?: string;
+  className?: string; // Removed editorDocument prop
   onClose?: () => void;
 }
 
-export const DocumentOutline = ({ editorDocument, className, onClose }: DocumentOutlineProps) => {
+export const DocumentOutline = ({ className, onClose }: DocumentOutlineProps) => { // Removed editorDocument prop
+  const editorDocument = useEditorDocument();
   const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
 
   // Extract headings from BlockNote document

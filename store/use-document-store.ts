@@ -51,6 +51,9 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
 
                 newDocs.set(doc.id, {
                     ...doc,
+                    // If existing, preserve content to prevent Editor re-hydration loops
+                    // We only need content in Store for INITIAL (seeding) load.
+                    content: existing ? existing.content : doc.content,
                     // If we are currently typing (busy), keep our local title/icon
                     title: isBusy && existing ? existing.title : doc.title,
                     icon: isBusy && existing ? existing.icon : doc.icon,

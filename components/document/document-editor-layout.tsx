@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import dynamic from "next/dynamic";
-import { Loader2 } from "lucide-react";
+import { useMemo, useState, useEffect, memo } from "react";
+// import dynamic from "next/dynamic"; // Removed dynamic import
+// import { Loader2 } from "lucide-react"; // Removed loader
 import debounce from "lodash.debounce";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { cn } from "@/lib/utils";
 
-import { Skeleton } from "@/components/ui/skeleton";
+// import { Skeleton } from "@/components/ui/skeleton"; // Removed skeleton
 import { Toolbar } from "@/components/toolbar";
 import { Cover } from "@/components/cover";
 import { Navbar } from "@/components/main/navbar";
@@ -24,46 +24,28 @@ import {
     useQaListOpen
 } from "@/store/use-layout-store";
 
+// Use Stable Lazy Components to prevent HMR Unmounts
+import { LazyEditor as Editor } from "@/components/lazy-editor";
+import { LazyExcalidraw as ExcalidrawCanvas } from "@/components/lazy-excalidraw";
+
 interface DocumentEditorLayoutProps {
     document: any;
     documentId: string;
     onChange: (content: string) => void;
 }
 
-export const DocumentEditorLayout = ({
+const DocumentEditorLayoutComponent = ({
     document,
     documentId,
     onChange
 }: DocumentEditorLayoutProps) => {
 
-    // Helper to parse content optimistically
-    const parseInitialContent = useMemo(() => {
-        return (contentJson: string | null) => {
-            if (!contentJson) return [];
-            try {
-                return JSON.parse(contentJson);
-            } catch (e) {
-                console.error("Failed to parse initial content for outline", e);
-                return [];
-            }
-        };
-    }, []);
+    const setStoreEditorDocument = useLayoutStore((state) => state.setEditorDocument);
 
-    // UI State - Initialize from prop immediately for instant render
-    const [editorDocument, setEditorDocument] = useState<any>(() => {
-        return parseInitialContent(document.content);
-    });
-
-    // Reset/Update outline when document changes
-    useEffect(() => {
-        // Optimistically set content from props while waiting for editor
-        setEditorDocument(parseInitialContent(document.content));
-    }, [documentId, document.content, parseInitialContent]);
-
-    // Debounce outline updates from editor (keep this for live typing updates)
+    // Debounce outline updates to Zustand Store (avoids Layout re-render)
     const debouncedSetEditorDocument = useMemo(
-        () => debounce((doc: any) => setEditorDocument(doc), 1000),
-        []
+        () => debounce((doc: any) => setStoreEditorDocument(doc), 1000),
+        [setStoreEditorDocument]
     );
 
     useEffect(() => {
@@ -77,7 +59,13 @@ export const DocumentEditorLayout = ({
     const isCanvasFullscreen = useCanvasFullscreen();
     const isOutlineOpen = useOutlineOpen();
     const isQaListOpen = useQaListOpen();
-    const { toggleCanvas, toggleFullscreen, toggleOutline, toggleQaList, openCanvas } = useLayoutStore();
+
+    // Select actions individually to avoid re-rendering on every store change (CRITICAL)
+    const toggleCanvas = useLayoutStore(state => state.toggleCanvas);
+    const toggleFullscreen = useLayoutStore(state => state.toggleFullscreen);
+    const toggleOutline = useLayoutStore(state => state.toggleOutline);
+    const toggleQaList = useLayoutStore(state => state.toggleQaList);
+    const openCanvas = useLayoutStore(state => state.openCanvas);
 
     // Global AI Chat State
     const [globalAiChat, setGlobalAiChat] = useState<{ isOpen: boolean, initialInput: string }>({
@@ -91,36 +79,6 @@ export const DocumentEditorLayout = ({
             initialInput: prompt
         });
     };
-
-    // Lazy Components
-    const Editor = useMemo(
-        () => dynamic(() => import("@/components/editor"), {
-            ssr: false,
-            loading: () => (
-                <div className="space-y-4 pt-4">
-                    <Skeleton className="h-4 w-[80%]" />
-                    <Skeleton className="h-4 w-[40%]" />
-                    <Skeleton className="h-4 w-[60%]" />
-                </div>
-            )
-        }),
-        [],
-    );
-
-    const ExcalidrawCanvas = useMemo(
-        () => dynamic(() => import("@/components/excalidraw-canvas"), {
-            ssr: false,
-            loading: () => (
-                <div className="h-full w-full flex items-center justify-center bg-muted/20">
-                    <div className="flex flex-col items-center gap-y-2">
-                        <Loader2 className="h-6 w-6 text-rose-500 animate-spin" />
-                        <p className="text-xs text-muted-foreground font-medium">Canvas Initializing...</p>
-                    </div>
-                </div>
-            )
-        }),
-        [],
-    );
 
     return (
         <div className="h-full w-full bg-background dark:bg-[#1F1F1F] overflow-hidden">
@@ -174,7 +132,6 @@ export const DocumentEditorLayout = ({
                             >
                                 <div className="w-80 h-full">
                                     <DocumentOutline
-                                        editorDocument={editorDocument}
                                         className="h-full overflow-y-auto custom-scrollbar"
                                         onClose={toggleOutline}
                                     />
@@ -255,3 +212,24 @@ export const DocumentEditorLayout = ({
         </div>
     );
 };
+
+export const DocumentEditorLayout = memo(DocumentEditorLayoutComponent, (prev, next) => {
+    // Prevent re-render if only content/version changed
+    // We only care about layout-shifting props:
+    // 1. ID change (navigation)
+    // 2. Cover Image (visual shift)
+    // 3. Archived status (Banner appearing)
+    // 4. Icon (Navbar update - though handled by store, good to be safe)
+
+    // Note: 'document' reference changes frequently from page.tsx, so we MUST compare deep props.
+
+    const idMatch = prev.documentId === next.documentId;
+    const coverMatch = prev.document?.coverImage === next.document?.coverImage;
+    const archiveMatch = prev.document?.isArchived === next.document?.isArchived;
+    const iconMatch = prev.document?.icon === next.document?.icon;
+
+    // We ignore 'content', 'version', 'userId' updates for the Layout frame.
+    // The inner components (Navbar, Editor) handle their own data needs or use Stores.
+
+    return idMatch && coverMatch && archiveMatch && iconMatch;
+});
