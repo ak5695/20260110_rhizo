@@ -257,17 +257,23 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
 
       // Space-to-AI: Pressing space on an empty block opens AI assistant
       if (event.key === " " && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+        console.log("[Editor] Space key detected");
         const cursorPosition = editor.getTextCursorPosition();
         const currentBlock = cursorPosition.block;
+        console.log("[Editor] Current Block:", currentBlock);
 
         // Robust content extraction
         let blockText = "";
         if (currentBlock.content && Array.isArray(currentBlock.content)) {
           blockText = currentBlock.content.map((c: any) => c.text || "").join("");
         }
+        console.log("[Editor] Block text:", `"${blockText}"`, "Trimmed:", `"${blockText.trim()}"`);
 
         // Only trigger if block is strictly empty
-        if (blockText.trim() === "") {
+        if (blockText === "") { // Strict empty check (no whitespace allowed for trigger)
+          console.log("[Editor] Triggering AI Modal");
+          // ...
+
           event.preventDefault();
           event.stopPropagation();
 
