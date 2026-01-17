@@ -81,6 +81,33 @@ export const ExcalidrawCanvas = ({ documentId, className, onChange }: Excalidraw
 
     const containerRef = useRef<HTMLDivElement>(null);
 
+    // Responsive: Monitor container width to toggle compact mode
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const width = entry.contentRect.width;
+                // If width < 860px, add compact class for layout adjustments
+                if (width < 860) {
+                    container.classList.add("excalidraw-compact");
+                } else {
+                    container.classList.remove("excalidraw-compact");
+                }
+
+                // Dynamic Scale: Proportionally shrink the UI based on container width
+                // Base threshold 860px. If width is 430px, scale is 0.5.
+                // Clamp between 0.6 and 1.0 to maintain usability.
+                const scale = Math.min(1, Math.max(0.6, width / 860));
+                container.style.setProperty("--canvas-toolbar-scale", scale.toString());
+            }
+        });
+
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, []);
+
     // Use custom hook for canvas sync
     const {
         canvasId,

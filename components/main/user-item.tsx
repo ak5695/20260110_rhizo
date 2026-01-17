@@ -68,7 +68,7 @@ export const UserItem = () => {
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          className="w-full cursor-pointer text-muted-foreground"
+          className="w-full cursor-pointer text-orange-600 dark:text-orange-500 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950/20 focus:text-orange-700 focus:bg-orange-50 dark:focus:bg-orange-950/20"
           onClick={onSignOut}
         >
           Logout

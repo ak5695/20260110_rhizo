@@ -10,25 +10,21 @@ interface CanvasStatusIndicatorProps {
 
 export const CanvasStatusIndicator = ({ status }: CanvasStatusIndicatorProps) => {
     return (
-        <div className="absolute top-36 left-4 z-50 pointer-events-none flex items-center gap-2 px-3 py-1.5 bg-white/90 dark:bg-[#1e1e1e]/90 backdrop-blur rounded-full shadow-sm text-xs font-medium border border-gray-200 dark:border-gray-700 transition-all duration-300 origin-left">
+        <div className="absolute bottom-16 right-4 z-50 pointer-events-none flex items-center justify-center gap-1.5 px-2 py-1 bg-white/80 dark:bg-[#1e1e1e]/80 backdrop-blur-md rounded-full shadow-sm text-[10px] font-medium border border-gray-100 dark:border-gray-800 transition-all duration-300 origin-right hover:bg-white/95 dark:hover:bg-[#1e1e1e]/95">
             {status === "saving" && (
                 <>
-                    <Loader2 className="w-3 h-3 animate-spin text-orange-500" />
-                    <span className="text-orange-600 dark:text-orange-400">Saving...</span>
+                    <Loader2 className="w-2.5 h-2.5 animate-spin text-muted-foreground" />
+                    <span className="text-muted-foreground hidden sm:inline">Saving</span>
                 </>
             )}
             {status === "idle" && (
                 <>
-                    <Cloud className="w-3 h-3 text-gray-400" />
-                    <Check className="w-2.5 h-2.5 text-green-500 -ml-1" />
-                    <span className="text-gray-500 dark:text-gray-400">Saved</span>
+                    <Cloud className="w-3 h-3 text-muted-foreground/60" />
+                    <Check className="w-2 h-2 text-green-500/80 -ml-1.5 mt-1" />
                 </>
             )}
             {status === "pending" && (
-                <>
-                    <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
-                    <span className="text-gray-500 dark:text-gray-400">Changed</span>
-                </>
+                <div className="w-1.5 h-1.5 rounded-full bg-orange-400/80 animate-pulse" />
             )}
         </div>
     );

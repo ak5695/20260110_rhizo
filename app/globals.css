@@ -502,3 +502,42 @@ body,
   border-radius: 3px;
   transition: background-color 0.3s ease;
 }
+
+/* --- Responsive Excalidraw Overrides --- */
+/* Scale down UI when container is narrow (handled by .excalidraw-canvas logic) */
+.excalidraw-compact .App-menu_top {
+  transform: scale(var(--canvas-toolbar-scale, 1));
+  transform-origin: top center;
+  max-width: 100% !important;
+  left: 0 !important;
+  right: 0 !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  width: fit-content !important;
+}
+
+.excalidraw-compact .App-menu_right {
+  transform: scale(var(--canvas-toolbar-scale, 1));
+  transform-origin: top right;
+  right: 10px !important;
+}
+
+.excalidraw-compact .App-menu_bottom {
+  transform: scale(var(--canvas-toolbar-scale, 1));
+  transform-origin: bottom center;
+  margin-bottom: 8px;
+  max-width: 100% !important;
+}
+
+/* Hide some non-essential elements in extremely narrow views if needed */
+.excalidraw-compact .layer-ui__wrapper__footer-left {
+  transform: scale(var(--canvas-toolbar-scale, 1));
+  transform-origin: bottom left;
+  left: 10px !important;
+  margin-bottom: 10px;
+}
+
+/* Ensure hamburger menu doesn't get cut off */
+.excalidraw-compact .App-menu_top>*:first-child {
+  margin-left: 4px !important;
+}

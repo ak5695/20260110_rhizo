@@ -1,53 +1,17 @@
-"use client";
-import Image from "next/image";
-import { authClient } from "@/lib/auth-client";
-import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
-import { create } from "@/actions/documents";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { redirect } from "next/navigation";
+import { create, getLastActive } from "@/actions/documents";
 
-import { useCachedSession } from "@/hooks/use-cached-session";
+export const dynamic = "force-dynamic";
 
-export default function DocumentPage() {
-  const { data: session } = useCachedSession();
-  const router = useRouter();
+export default async function DocumentPage() {
+  // 1. Check for last active document
+  const lastActive = await getLastActive();
 
-  const onCreate = () => {
-    const promise = create({ title: "Untitled" }).then((document) =>
-      router.push(`/documents/${document.id}`),
-    );
+  if (lastActive) {
+    return redirect(`/documents/${lastActive.id}`);
+  }
 
-    toast.promise(promise, {
-      loading: "Creating a new note...",
-      success: "New note created",
-      error: "Failed to create new note",
-    });
-  };
-
-  return (
-    <div className="h-full flex flex-col items-center justify-center space-y-4 ">
-      <Image
-        src="/empty.png"
-        alt="empty"
-        height="300"
-        width="300"
-        className="dark:hidden"
-      />
-      <Image
-        src="/empty-dark.png"
-        alt="empty"
-        height="300"
-        width="300"
-        className="hidden dark:block"
-      />
-      <h2 className="text-lg font-medium">
-        Welcome to {session?.user?.name}&apos;s Jotion
-      </h2>
-      <Button onClick={onCreate}>
-        <PlusCircle className="h-4 w-4 mr-2" />
-        Create a note
-      </Button>
-    </div>
-  );
+  // 2. No documents? Create one.
+  const newDoc = await create({ title: "Untitled" });
+  return redirect(`/documents/${newDoc.id}`);
 }

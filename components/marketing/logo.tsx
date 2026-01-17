@@ -8,7 +8,7 @@ export const Logo = () => {
   return (
     <div className="hidden md:flex items-center gap-x-2">
       <Image
-        src="/logo.jpg"
+        src="/logo.png"
         alt="Logo"
         height="40"
         width="40"
@@ -16,7 +16,7 @@ export const Logo = () => {
         className="dark:hidden"
       />
       <Image
-        src="/logo-dark.jpg"
+        src="/logo-dark.png"
         alt="Logo"
         height="40"
         width="40"

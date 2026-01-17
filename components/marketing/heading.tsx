@@ -5,7 +5,6 @@ import { ArrowRight } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { Spinner } from "@/components/spinner";
 import Link from "next/link";
-import { WaitlistForm } from "@/components/marketing/waitlist-form";
 
 export const Heading = () => {
   const { data: session, isPending: isLoading } = authClient.useSession();
@@ -26,9 +25,11 @@ export const Heading = () => {
         </div>
       )}
       {!session && !isLoading && (
-        <div className="w-full flex justify-center pt-8 md:pt-10 transition-all" id="waitlist">
-          <WaitlistForm />
-        </div>
+        <Button asChild size="lg" className="mt-8 md:mt-10">
+          <Link href="/sign-up">
+            Get Started Free <ArrowRight className="h-4 w-4 ml-2" />
+          </Link>
+        </Button>
       )}
       {session && !isLoading && (
         <Button asChild>

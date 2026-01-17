@@ -9,10 +9,12 @@ import { Menu } from "@/components/main/menu";
 import { Publish } from "@/components/main/publish";
 import useSWR from "swr";
 
-import { ChevronsLeft, ChevronsRight, MenuIcon, List, HelpCircle } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, MenuIcon, List, HelpCircle, Presentation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
+import { useLayoutStore } from "@/store/use-layout-store";
 import { useSidebarStore, useSidebarCollapsed } from "@/store/use-sidebar-store";
+import { useMediaQuery } from "@/hooks/use-media-query";
 
 interface NavbarProps {
   initialData?: any;
@@ -28,6 +30,27 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
   // Use Zustand store for sidebar state (no more window events!)
   const isCollapsed = useSidebarCollapsed();
   const { expand } = useSidebarStore();
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
+  const handleCanvasToggle = () => {
+    if (isMobile) {
+      const { isCanvasOpen, isCanvasFullscreen, openCanvas, closeCanvas, setCanvasFullscreen } = useLayoutStore.getState();
+
+      if (!isCanvasOpen) {
+        // State 1 (Doc) -> State 2 (Split)
+        openCanvas();
+      } else if (!isCanvasFullscreen) {
+        // State 2 (Split) -> State 3 (Canvas Fullscreen)
+        setCanvasFullscreen(true);
+      } else {
+        // State 3 (Canvas Fullscreen) -> State 1 (Doc)
+        setCanvasFullscreen(false);
+        closeCanvas();
+      }
+    } else {
+      onToggleCanvas?.();
+    }
+  };
 
   const { data: document, mutate } = useSWR(
     params.documentId ? ["document", params.documentId] : null,
@@ -68,9 +91,11 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
             className="h-6 w-6 text-muted-foreground cursor-pointer hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-sm"
           />
         )}
-        <div className="flex items-center justify-between w-full">
-          <Title initialData={document} />
-          <div className="flex items-center gap-x-0">
+        <div className="flex items-center w-full min-w-0 gap-x-2">
+          <div className="flex-1 min-w-0">
+            <Title initialData={document} />
+          </div>
+          <div className="flex items-center gap-x-0.5 shrink-0">
             <Publish initialData={document} />
             <Menu documentId={document.id} />
             {onToggleOutline && (
@@ -82,7 +107,7 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
                       useLayoutStore.getState().toggleQaList();
                     });
                   }}
-                  className="h-6 w-6 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition"
+                  className="h-8 w-8 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition"
                 >
                   <HelpCircle className="h-4 w-4" />
                 </div>
@@ -90,7 +115,7 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
                   role="button"
                   onClick={onToggleOutline}
                   className={cn(
-                    "h-6 w-6 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition",
+                    "h-8 w-8 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition",
                     isOutlineOpen && "bg-neutral-300 dark:bg-neutral-600 text-primary"
                   )}
                 >
@@ -101,10 +126,12 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
             {onToggleCanvas && (
               <div
                 role="button"
-                onClick={onToggleCanvas}
-                className="h-6 w-6 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition"
+                onClick={handleCanvasToggle}
+                className="h-8 w-8 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition"
               >
-                {isCanvasOpen ? (
+                {isMobile ? (
+                  <Presentation className="h-4 w-4" />
+                ) : isCanvasOpen ? (
                   <ChevronsRight className="h-4 w-4" />
                 ) : (
                   <ChevronsLeft className="h-4 w-4" />

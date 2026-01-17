@@ -30,7 +30,7 @@ export const Navbar = () => {
               <Link href="/sign-in">Login</Link>
             </Button>
             <Button size="sm" asChild>
-              <Link href="#waitlist">Join Waitlist</Link>
+              <Link href="/sign-up">Get Started Free</Link>
             </Button>
           </>
         )}

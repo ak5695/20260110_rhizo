@@ -35,7 +35,7 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+  VariantProps<typeof buttonVariants> {
   asChild?: boolean;
 }
 
@@ -46,6 +46,13 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
+        onClick={(e) => {
+          // Light vibration for mobile feel
+          if (typeof navigator !== "undefined" && navigator.vibrate) {
+            navigator.vibrate(10);
+          }
+          props.onClick?.(e);
+        }}
         {...props}
       />
     );

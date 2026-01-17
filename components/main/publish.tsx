@@ -9,7 +9,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { Check, Copy, Globe } from "lucide-react";
+import { Check, Copy, Globe, Share } from "lucide-react";
 import { useOrigin } from "@/hooks/use-origin";
 
 interface PublishProps {
@@ -65,9 +65,10 @@ export const Publish = ({ initialData }: PublishProps) => {
     <Popover>
       <PopoverTrigger asChild>
         <Button size="sm" variant="ghost">
-          Publish{" "}
-          {initialData.isPublished && (
-            <Globe className="text-sky-500 w-4 h-4 ml-2" />
+          {initialData.isPublished ? (
+            <Globe className="h-4 w-4" />
+          ) : (
+            <Share className="h-4 w-4" />
           )}
         </Button>
       </PopoverTrigger>

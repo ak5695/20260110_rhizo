@@ -468,3 +468,33 @@ export const removeCoverImage = async (id: string) => {
 
     return update({ id, coverImage: null as any, version: docWithVersion.version })
 }
+
+export const getLastActive = async () => {
+    const user = await getUser()
+    if (!user) return null
+
+    const data = await db.select().from(documents)
+        .where(
+            and(
+                eq(documents.userId, user.id),
+                eq(documents.isArchived, false)
+            )
+        )
+        .orderBy(desc(documents.updatedAt))
+        .limit(1)
+
+    return data[0] || null
+}
+
+export const getRedirectUrl = async () => {
+    const user = await getUser()
+    if (!user) return "/documents" // Fallback
+
+    const lastActive = await getLastActive()
+    if (lastActive) {
+        return `/documents/${lastActive.id}`
+    }
+
+    const newDoc = await create({ title: "Untitled" })
+    return `/documents/${newDoc.id}`
+}

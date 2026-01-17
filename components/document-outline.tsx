@@ -102,18 +102,6 @@ export const DocumentOutline = ({ className, onClose }: DocumentOutlineProps) =>
     }
   }, [headings]);
 
-  if (headings.length === 0) {
-    return (
-      <div className={cn("p-4 text-center", className)}>
-        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-          <List className="h-8 w-8 opacity-30" />
-          <p className="text-xs">No headings found</p>
-          <p className="text-[10px] opacity-60">Add headings to see the outline</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={cn("flex flex-col h-full", className)}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 shrink-0">
@@ -132,42 +120,52 @@ export const DocumentOutline = ({ className, onClose }: DocumentOutlineProps) =>
         )}
       </div>
 
-      <div className="flex flex-col gap-0.5 p-2">
-        {headings.map((heading) => {
-          const isActive = activeHeadingId === heading.id;
-          const indent = (heading.level - 1) * 12; // 12px per level
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {headings.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full p-4 text-center gap-2 text-muted-foreground">
+            <List className="h-8 w-8 opacity-30" />
+            <p className="text-xs">No headings found</p>
+            <p className="text-[10px] opacity-60">Add headings to see the outline</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-0.5 p-2">
+            {headings.map((heading) => {
+              const isActive = activeHeadingId === heading.id;
+              const indent = (heading.level - 1) * 12; // 12px per level
 
-          return (
-            <button
-              key={heading.id}
-              onClick={() => scrollToHeading(heading.id)}
-              className={cn(
-                "group flex items-start gap-2 px-2 py-1.5 rounded-lg text-left transition-all",
-                "hover:bg-muted/50 dark:hover:bg-white/5",
-                isActive && "bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400"
-              )}
-              style={{ paddingLeft: `${8 + indent}px` }}
-            >
-              <ChevronRight
-                className={cn(
-                  "h-3.5 w-3.5 flex-shrink-0 mt-0.5 transition-all",
-                  isActive ? "opacity-100 text-purple-500" : "opacity-0 group-hover:opacity-50"
-                )}
-              />
-              <span
-                className={cn(
-                  "text-sm leading-tight line-clamp-2 transition-colors",
-                  heading.level === 1 && "font-semibold",
-                  heading.level === 2 && "font-medium",
-                  heading.level === 3 && "font-normal text-muted-foreground",
-                  isActive && "font-semibold"
-                )}
-              >
-                {heading.text}
-              </span>
-            </button>
-          );
-        })}
+              return (
+                <button
+                  key={heading.id}
+                  onClick={() => scrollToHeading(heading.id)}
+                  className={cn(
+                    "group flex items-start gap-2 px-2 py-1.5 rounded-lg text-left transition-all",
+                    "hover:bg-muted/50 dark:hover:bg-white/5",
+                    isActive && "bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400"
+                  )}
+                  style={{ paddingLeft: `${8 + indent}px` }}
+                >
+                  <ChevronRight
+                    className={cn(
+                      "h-3.5 w-3.5 flex-shrink-0 mt-0.5 transition-all",
+                      isActive ? "opacity-100 text-purple-500" : "opacity-0 group-hover:opacity-50"
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "text-sm leading-tight line-clamp-2 transition-colors",
+                      heading.level === 1 && "font-semibold",
+                      heading.level === 2 && "font-medium",
+                      heading.level === 3 && "font-normal text-muted-foreground",
+                      isActive && "font-semibold"
+                    )}
+                  >
+                    {heading.text}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

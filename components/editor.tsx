@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { useTheme } from "next-themes";
+import { cn } from "@/lib/utils";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
 import "@blocknote/core/fonts/inter.css";
 import { SelectionToolbar } from "./selection-toolbar";
 import { toast } from "sonner";
-import { FilePlus } from "lucide-react";
+import { FilePlus, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import debounce from "lodash.debounce";
 import { create as serverCreateDocument } from "@/actions/documents";

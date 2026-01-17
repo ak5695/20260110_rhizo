@@ -7,6 +7,7 @@ import Image from "next/image";
 import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth-client";
+import { getRedirectUrl } from "@/actions/documents";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,13 +36,18 @@ export default function SignIn() {
 
         if (data) {
             toast.success("Welcome back!");
-            router.push("/documents");
+            try {
+                const url = await getRedirectUrl();
+                router.push(url);
+            } catch (error) {
+                router.push("/documents");
+            }
             router.refresh();
         }
         if (error) {
             toast.error(error.message || "Invalid credentials");
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const signInWithSocial = async (provider: "google" | "github") => {
@@ -87,14 +93,14 @@ export default function SignIn() {
                     <div className="text-center mb-6">
                         <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-background border border-border/50 mb-4 overflow-hidden shadow-lg">
                             <Image
-                                src="/logo.jpg"
+                                src="/logo.png"
                                 alt="Rhizo"
                                 width={64}
                                 height={64}
                                 className="dark:hidden"
                             />
                             <Image
-                                src="/logo-dark.jpg"
+                                src="/logo-dark.png"
                                 alt="Rhizo"
                                 width={64}
                                 height={64}

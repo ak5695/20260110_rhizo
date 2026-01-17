@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 
 import { authClient } from "@/lib/auth-client";
+import { getRedirectUrl } from "@/actions/documents";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,7 +53,12 @@ export default function SignUp() {
 
         if (data) {
             toast.success("Account created!");
-            router.push("/documents");
+            try {
+                const url = await getRedirectUrl();
+                router.push(url);
+            } catch (error) {
+                router.push("/documents");
+            }
             router.refresh();
         }
         if (error) {
@@ -107,14 +113,14 @@ export default function SignUp() {
                     <div className="text-center mb-6">
                         <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-background border border-border/50 mb-4 overflow-hidden shadow-lg">
                             <Image
-                                src="/logo.jpg"
+                                src="/logo.png"
                                 alt="Rhizo"
                                 width={64}
                                 height={64}
                                 className="dark:hidden"
                             />
                             <Image
-                                src="/logo-dark.jpg"
+                                src="/logo-dark.png"
                                 alt="Rhizo"
                                 width={64}
                                 height={64}
