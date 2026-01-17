@@ -255,8 +255,7 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
       // Don't trigger if AI modal is open - handled by modal itself
       if (showAiModal) return;
 
-      // DISABLE Space-to-AI completely as per user request to fix focus loss
-      /*
+      // Space-to-AI: Pressing space on an empty block opens AI assistant
       if (event.key === " " && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
         const cursorPosition = editor.getTextCursorPosition();
         const currentBlock = cursorPosition.block;
@@ -289,7 +288,6 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
           setShowAiModal(true);
         }
       }
-      */
     };
 
     const editorElement = document.querySelector(".bn-container");
