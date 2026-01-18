@@ -12,9 +12,9 @@ export const auth = betterAuth({
         enabled: true
     },
     account: {
-        autoLink: {
+        accountLinking: {
             enabled: true,
-            requiredEmailVerification: false,
+            trustedProviders: ["google", "github", "notion"],
         }
     },
     socialProviders: {
