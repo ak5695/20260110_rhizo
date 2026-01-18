@@ -32,9 +32,13 @@ export const auth = betterAuth({
             clientSecret: process.env.NOTION_CLIENT_SECRET as string,
         },
     },
+    logger: {
+        level: "debug",
+    },
     trustedOrigins: [
         process.env.BETTER_AUTH_URL,
         process.env.NEXT_PUBLIC_APP_URL,
+        "https://rhizo.dufran.cn",
     ].filter((url): url is string => !!url),
 });
 
