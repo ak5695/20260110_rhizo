@@ -79,7 +79,7 @@ export const QaList = ({ onClose, className, onAsk }: QaListProps) => {
                             <input
                                 placeholder="Add a question..."
                                 ref={(input) => {
-                                    if (input) {
+                                    if (input && window.innerWidth > 768) {
                                         input.setSelectionRange(input.value.length, input.value.length);
                                         input.focus();
                                     }

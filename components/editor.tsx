@@ -67,7 +67,8 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
   const requestEditorFocus = useCallback((editor: any, options?: {
     delay?: number,
     blockId?: string,
-    position?: "start" | "end"
+    position?: "start" | "end",
+    force?: boolean // NEW: Explicit force flag
   }) => {
     // Cancel any pending focus request
     if (pendingFocusRef.current) {
@@ -75,7 +76,13 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
       pendingFocusRef.current = null;
     }
 
-    const { delay = 0, blockId, position = "end" } = options || {};
+    const { delay = 0, blockId, position = "end", force = false } = options || {};
+
+    // ON MOBILE: Block auto-focus unless explicitly forced (e.g. from Title Enter)
+    if (window.innerWidth <= 768 && !force) {
+      console.log("[FocusManager] Sketchy focus request blocked on mobile", options);
+      return;
+    }
 
     const performFocus = () => {
       if (!editor) return;
@@ -498,7 +505,8 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
       requestEditorFocus(editor, {
         delay: 50,
         blockId: savedCursorBlockRef.current || undefined,
-        position: "end"
+        position: "end",
+        force: true
       });
       savedCursorBlockRef.current = null;
     }
@@ -657,7 +665,7 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
   useEffect(() => {
     const handleFocusRequest = () => {
       if (editor) {
-        requestEditorFocus(editor, { delay: 0, position: "start" });
+        requestEditorFocus(editor, { delay: 0, position: "start", force: true });
       }
     };
     window.addEventListener("editor:focus", handleFocusRequest);
@@ -1007,7 +1015,8 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
                   requestEditorFocus(editor, {
                     delay: 100,
                     blockId: lastInsertedBlock.id,
-                    position: "end"
+                    position: "end",
+                    force: true
                   });
                 }
               } catch (error) {
