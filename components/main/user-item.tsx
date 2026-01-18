@@ -18,8 +18,14 @@ export const UserItem = () => {
   const router = useRouter();
 
   const onSignOut = async () => {
-    await authClient.signOut();
-    router.push("/");
+    await authClient.signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          router.push("/");
+          router.refresh();
+        },
+      },
+    });
   }
 
   // Generate pixel-art avatar URL if no user image is present
