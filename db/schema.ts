@@ -8,6 +8,7 @@ export const user = pgTable("user", {
     email: text("email").notNull().unique(),
     emailVerified: boolean("emailVerified").notNull().default(true),
     image: text("image"),
+    password: text("password"),
     role: text("role").notNull().default("user"),
     banned: boolean("banned").notNull().default(false),
     banReason: text("banReason"),
@@ -36,7 +37,6 @@ export const account = pgTable("account", {
     refreshToken: text("refreshToken"),
     idToken: text("idToken"),
     expiresAt: timestamp("expiresAt"),
-    password: text("password"),
     createdAt: timestamp("createdAt").notNull(),
     updatedAt: timestamp("updatedAt").notNull()
 });
