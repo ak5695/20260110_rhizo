@@ -44,6 +44,18 @@ export default function SignIn() {
     };
 
     const signInWithSocial = async (provider: "google" | "github" | "notion") => {
+        // Detect restricted WebView environment (disallowed_useragent)
+        const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+        const isWebView = /MicroMessenger|QQ\/|Alipay|DingTalk|TikTok|WeiBo|InsideApp/i.test(ua);
+
+        if (provider === "google" && isWebView) {
+            toast.error("Google 登录受限", {
+                description: "当前 App 内置浏览器不符合 Google 安全政策。请点击右上角【...】选择“在浏览器中打开”后再尝试登录。",
+                duration: 6000,
+            });
+            return;
+        }
+
         setSocialLoading(provider);
         try {
             await authClient.signIn.social({
