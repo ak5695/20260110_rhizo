@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1768102273261,
-      "tag": "0000_add_version_and_audit_trail",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1768198286236,
-      "tag": "0001_colossal_prism",
+      "when": 1768706126037,
+      "tag": "0000_certain_shocker",
       "breakpoints": true
     }
   ]
