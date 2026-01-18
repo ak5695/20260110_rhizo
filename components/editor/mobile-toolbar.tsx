@@ -6,7 +6,7 @@ import {
     Plus, Sparkles, Undo, Redo, Keyboard,
     Bold, Italic, Underline, Strikethrough, Code,
     Heading1, Heading2, Heading3, List, ListOrdered, CheckSquare, Quote, Type, X,
-    Trash2, Copy, ArrowUp, ArrowDown
+    Trash2, Copy, ArrowUp, ArrowDown, Palette, Eraser
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,7 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
     const [isFocused, setIsFocused] = useState(false);
     const [showBlockMenu, setShowBlockMenu] = useState(false);
     const [activeFormats, setActiveFormats] = useState<Record<string, boolean>>({});
+    const [menuTab, setMenuTab] = useState<"actions" | "colors">("actions");
 
     // Track if we explicitly opened the menu to prevent auto-hiding
     const menuOpenRef = useRef(false);
@@ -76,31 +77,11 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
         editor?.toggleStyles({ [style]: true });
     };
 
-    const insertBlock = (type: string, props?: any) => {
-        const block = editor.getTextCursorPosition().block;
-        if (!block) return;
-
-        // Transform empty paragraph or insert new
-        const isEmpty = block.type === "paragraph" && (!block.content || block.content.length === 0);
-
-        if (isEmpty) {
-            editor.updateBlock(block, { type, props });
-        } else {
-            editor.insertBlocks([{ type, props }], block, "after");
-        }
-
-        // Close menu and restore focus (bring back keyboard)
-        setShowBlockMenu(false);
-        menuOpenRef.current = false;
-
-        // Small delay to allow UI to settle
-        setTimeout(() => {
-            editor.focus();
-        }, 50);
-    };
-
     const updateRemoteBlock = (block: any, type: string, props?: any) => {
         editor.updateBlock(block, { type, props });
+        setShowBlockMenu(false);
+        menuOpenRef.current = false;
+        editor.focus();
     };
 
     const handleUndo = () => editor?._tiptapEditor?.commands.undo();
@@ -116,6 +97,7 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
             // Open menu, dismiss keyboard
             setShowBlockMenu(true);
             menuOpenRef.current = true;
+            setMenuTab("actions"); // Reset to actions tab
 
             if (document.activeElement instanceof HTMLElement) {
                 document.activeElement.blur();
@@ -137,17 +119,12 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
     const handleDuplicateBlock = () => {
         const block = editor.getTextCursorPosition().block;
         if (block) {
-            // Clone block: content and props
-            // Ensure we pass compatible PartialBlock
             const newBlock = {
                 type: block.type,
-                props: { ...block.props }, // Shallow copy props
-                content: block.content // Content array
+                props: { ...block.props },
+                content: block.content
             };
-
-            // Insert AFTER current
             editor.insertBlocks([newBlock], block, "after");
-
             setShowBlockMenu(false);
             menuOpenRef.current = false;
             editor.focus();
@@ -156,12 +133,11 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
 
     return (
         <>
-            {/* Toolbar */}
+            {/* Toolbar Strip */}
             <div
                 className={cn(
-                    "fixed left-0 right-0 py-2 px-1 bg-background/95 border-t border-border/10 flex items-center justify-between z-[99999] shadow-[0_-4px_20px_rgba(0,0,0,0.1)] backdrop-blur-xl transition-all duration-300 ease-out",
-                    // Move toolbar up when menu is open
-                    showBlockMenu ? "bottom-[340px]" : "bottom-0 safe-area-bottom pb-safe-offset-2"
+                    "fixed left-2 right-2 rounded-xl py-1.5 px-2 bg-white/90 dark:bg-zinc-800/90 border border-black/5 dark:border-white/10 flex items-center justify-between z-[99999] shadow-lg backdrop-blur-md transition-all duration-300 ease-out",
+                    showBlockMenu ? "bottom-[340px]" : "bottom-6 safe-area-bottom"
                 )}
                 onPointerDown={(e) => {
                     e.preventDefault();
@@ -169,36 +145,32 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
                     e.nativeEvent.stopImmediatePropagation();
                 }}
             >
-                <div className="flex items-center gap-1 w-full overflow-x-auto no-scrollbar scroll-smooth px-2">
+                <div className="flex items-center gap-1 w-full overflow-x-auto no-scrollbar scroll-smooth">
                     {/* Toggle Menu Button */}
                     <ToolbarButton
                         onClick={handleToggleMenu}
-                        icon={<Plus className={cn("w-5 h-5 transition-transform", showBlockMenu && "rotate-45")} />}
+                        icon={<Plus className={cn("w-5 h-5 transition-transform duration-300", showBlockMenu && "rotate-45")} />}
                         active={showBlockMenu}
+                        variant="primary"
                     />
 
-                    <div className="w-px h-5 bg-border/50 mx-1 flex-shrink-0" />
+                    <div className="w-px h-5 bg-black/10 dark:bg-white/10 mx-1 flex-shrink-0" />
 
                     {/* Formatting */}
-                    <ToolbarButton onClick={() => toggleStyle("bold")} icon={<Bold className="w-5 h-5" />} active={activeFormats.bold} />
-                    <ToolbarButton onClick={() => toggleStyle("italic")} icon={<Italic className="w-5 h-5" />} active={activeFormats.italic} />
-                    <ToolbarButton onClick={() => toggleStyle("underline")} icon={<Underline className="w-5 h-5" />} active={activeFormats.underline} />
-                    <ToolbarButton onClick={() => toggleStyle("strike")} icon={<Strikethrough className="w-5 h-5" />} active={activeFormats.strike} />
-                    <ToolbarButton onClick={() => toggleStyle("code")} icon={<Code className="w-5 h-5" />} active={activeFormats.code} />
-
-                    {/* Headings Shortcuts (visible if space) */}
-                    <div className="w-px h-5 bg-border/50 mx-1 flex-shrink-0" />
-                    <ToolbarButton onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 1 })} icon={<Heading1 className="w-5 h-5" />} />
-                    <ToolbarButton onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "bulletListItem")} icon={<List className="w-5 h-5" />} />
-                    <ToolbarButton onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "checkListItem")} icon={<CheckSquare className="w-5 h-5" />} />
-
+                    <div className="flex items-center gap-0.5">
+                        <ToolbarButton onClick={() => toggleStyle("bold")} icon={<Bold className="w-4 h-4" />} active={activeFormats.bold} />
+                        <ToolbarButton onClick={() => toggleStyle("italic")} icon={<Italic className="w-4 h-4" />} active={activeFormats.italic} />
+                        <ToolbarButton onClick={() => toggleStyle("underline")} icon={<Underline className="w-4 h-4" />} active={activeFormats.underline} />
+                        <ToolbarButton onClick={() => toggleStyle("strike")} icon={<Strikethrough className="w-4 h-4" />} active={activeFormats.strike} />
+                        <ToolbarButton onClick={() => toggleStyle("code")} icon={<Code className="w-4 h-4" />} active={activeFormats.code} />
+                    </div>
 
                     <div className="flex-1 min-w-[12px]" />
 
                     {/* Right aligned actions */}
-                    <div className="flex items-center gap-1 pl-2 border-l border-border/50 sticky right-0 bg-background/95 backdrop-blur-xl shadow-[-10px_0_20px_rgba(0,0,0,0.05)_inset]">
-                        <ToolbarButton onClick={handleUndo} icon={<Undo className="w-5 h-5" />} />
-                        <ToolbarButton onClick={handleRedo} icon={<Redo className="w-5 h-5" />} />
+                    <div className="flex items-center gap-0.5 pl-2 border-l border-black/10 dark:border-white/10 sticky right-0">
+                        <ToolbarButton onClick={handleUndo} icon={<Undo className="w-4 h-4" />} />
+                        <ToolbarButton onClick={handleRedo} icon={<Redo className="w-4 h-4" />} />
                         <ToolbarButton onClick={() => {
                             setShowBlockMenu(false);
                             menuOpenRef.current = false;
@@ -206,18 +178,18 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
                                 document.activeElement.blur();
                             }
                             setIsFocused(false);
-                        }} icon={<Keyboard className="w-5 h-5 opacity-60" />} />
+                        }} icon={<Keyboard className="w-4 h-4" />} />
                     </div>
                 </div>
             </div>
 
-            {/* Block Options Panel */}
+            {/* Block Options Sheet */}
             <div
                 className={cn(
-                    "fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t border-border/10 z-[99998] transition-transform duration-300 ease-in-out safe-area-bottom",
+                    "fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 rounded-t-[20px] shadow-[0_-8px_30px_rgba(0,0,0,0.12)] border-t border-black/5 dark:border-white/5 z-[99998] transition-transform duration-300 ease-in-out safe-area-bottom",
                     showBlockMenu ? "translate-y-0" : "translate-y-full"
                 )}
-                style={{ height: "340px" }}
+                style={{ height: "330px" }}
                 onPointerDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -225,70 +197,107 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
                 }}
             >
                 <div className="flex flex-col h-full">
-                    {/* Section: Actions */}
-                    <div className="flex items-center justify-end p-2 px-3 border-b border-border/10">
-                        <div className="flex items-center gap-1">
-                            <ToolbarButton onClick={handleDuplicateBlock} icon={<Copy className="w-5 h-5" />} />
-                            <ToolbarButton onClick={handleDeleteBlock} icon={<Trash2 className="w-5 h-5 text-red-500" />} />
-                        </div>
+                    {/* Drag Handle Indicator */}
+                    <div className="w-full flex justify-center pt-3 pb-1">
+                        <div className="w-10 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
                     </div>
 
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        <div className="p-4 space-y-6">
+                    {/* Tab Switcher */}
+                    <div className="px-4 py-2 flex gap-2">
+                        <button
+                            onClick={() => setMenuTab("actions")}
+                            className={cn(
+                                "flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all",
+                                menuTab === "actions"
+                                    ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                                    : "text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                            )}
+                        >
+                            Blocks
+                        </button>
+                        <button
+                            onClick={() => setMenuTab("colors")}
+                            className={cn(
+                                "flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all",
+                                menuTab === "colors"
+                                    ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                                    : "text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                            )}
+                        >
+                            Colors
+                        </button>
+                    </div>
 
-                            {/* Section: Turn Into */}
-                            <div className="space-y-2">
-                                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">Turn Into</h4>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <BlockOption label="Text" icon={<Type className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "paragraph")} />
-                                    <BlockOption label="Heading 1" icon={<Heading1 className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 1 })} />
-                                    <BlockOption label="Heading 2" icon={<Heading2 className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 2 })} />
-                                    <BlockOption label="Heading 3" icon={<Heading3 className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 3 })} />
-                                    <BlockOption label="Bullet List" icon={<List className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "bulletListItem")} />
-                                    <BlockOption label="Numbered List" icon={<ListOrdered className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "numberedListItem")} />
-                                    <BlockOption label="To-do List" icon={<CheckSquare className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "checkListItem")} />
-                                    <BlockOption label="Quote" icon={<Quote className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "blockquote")} />
-                                    <BlockOption label="Code Block" icon={<Code className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "codeBlock")} />
+                    {/* Content Area */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 pt-0">
+                        {menuTab === "actions" ? (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                                {/* Quick Actions Row */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        onClick={handleDuplicateBlock}
+                                        className="flex items-center justify-center gap-2 py-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl font-medium text-sm active:scale-95 transition-transform"
+                                    >
+                                        <Copy className="w-4 h-4" /> Duplicate
+                                    </button>
+                                    <button
+                                        onClick={handleDeleteBlock}
+                                        className="flex items-center justify-center gap-2 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl font-medium text-sm active:scale-95 transition-transform"
+                                    >
+                                        <Trash2 className="w-4 h-4" /> Delete
+                                    </button>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Turn Into</h4>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <BlockOption label="Text" icon={<Type className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "paragraph")} />
+                                        <BlockOption label="H1" icon={<Heading1 className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 1 })} />
+                                        <BlockOption label="H2" icon={<Heading2 className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 2 })} />
+                                        <BlockOption label="H3" icon={<Heading3 className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 3 })} />
+                                        <BlockOption label="Bullet" icon={<List className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "bulletListItem")} />
+                                        <BlockOption label="Number" icon={<ListOrdered className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "numberedListItem")} />
+                                        <BlockOption label="Todo" icon={<CheckSquare className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "checkListItem")} />
+                                        <BlockOption label="Quote" icon={<Quote className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "blockquote")} />
+                                        <BlockOption label="Code" icon={<Code className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "codeBlock")} />
+                                    </div>
                                 </div>
                             </div>
+                        ) : (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-right-2 duration-200">
+                                <div className="space-y-2">
+                                    <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Text Color</h4>
+                                    <div className="grid grid-cols-5 gap-2">
+                                        <ColorSwatch color="default" editor={editor} />
+                                        <ColorSwatch color="gray" editor={editor} />
+                                        <ColorSwatch color="brown" editor={editor} />
+                                        <ColorSwatch color="orange" editor={editor} />
+                                        <ColorSwatch color="yellow" editor={editor} />
+                                        <ColorSwatch color="green" editor={editor} />
+                                        <ColorSwatch color="blue" editor={editor} />
+                                        <ColorSwatch color="purple" editor={editor} />
+                                        <ColorSwatch color="pink" editor={editor} />
+                                        <ColorSwatch color="red" editor={editor} />
+                                    </div>
+                                </div>
 
-                            {/* Section: Colors */}
-                            <div className="space-y-2">
-                                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">Colors</h4>
-                                <div className="grid grid-cols-5 gap-2">
-                                    {/* Default */}
-                                    <ColorOption color="default" editor={editor} />
-                                    <ColorOption color="gray" editor={editor} />
-                                    <ColorOption color="brown" editor={editor} />
-                                    <ColorOption color="orange" editor={editor} />
-                                    <ColorOption color="yellow" editor={editor} />
-                                    <ColorOption color="green" editor={editor} />
-                                    <ColorOption color="blue" editor={editor} />
-                                    <ColorOption color="purple" editor={editor} />
-                                    <ColorOption color="pink" editor={editor} />
-                                    <ColorOption color="red" editor={editor} />
+                                <div className="space-y-2">
+                                    <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Background</h4>
+                                    <div className="grid grid-cols-5 gap-2">
+                                        <ColorSwatch color="default" type="background" editor={editor} />
+                                        <ColorSwatch color="gray" type="background" editor={editor} />
+                                        <ColorSwatch color="brown" type="background" editor={editor} />
+                                        <ColorSwatch color="orange" type="background" editor={editor} />
+                                        <ColorSwatch color="yellow" type="background" editor={editor} />
+                                        <ColorSwatch color="green" type="background" editor={editor} />
+                                        <ColorSwatch color="blue" type="background" editor={editor} />
+                                        <ColorSwatch color="purple" type="background" editor={editor} />
+                                        <ColorSwatch color="pink" type="background" editor={editor} />
+                                        <ColorSwatch color="red" type="background" editor={editor} />
+                                    </div>
                                 </div>
                             </div>
-
-                            {/* Section: Backgrounds */}
-                            <div className="space-y-2">
-                                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">Backgrounds</h4>
-                                <div className="grid grid-cols-5 gap-2">
-                                    {/* Default */}
-                                    <ColorOption color="default" type="background" editor={editor} />
-                                    <ColorOption color="gray" type="background" editor={editor} />
-                                    <ColorOption color="brown" type="background" editor={editor} />
-                                    <ColorOption color="orange" type="background" editor={editor} />
-                                    <ColorOption color="yellow" type="background" editor={editor} />
-                                    <ColorOption color="green" type="background" editor={editor} />
-                                    <ColorOption color="blue" type="background" editor={editor} />
-                                    <ColorOption color="purple" type="background" editor={editor} />
-                                    <ColorOption color="pink" type="background" editor={editor} />
-                                    <ColorOption color="red" type="background" editor={editor} />
-                                </div>
-                            </div>
-
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -296,16 +305,18 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
     );
 };
 
-const ToolbarButton = ({ onClick, icon, active = false }: { onClick?: () => void, icon: React.ReactNode, active?: boolean }) => (
+const ToolbarButton = ({ onClick, icon, active = false, variant = "default" }: { onClick?: () => void, icon: React.ReactNode, active?: boolean, variant?: "default" | "primary" }) => (
     <button
         onClick={(e) => {
             e.stopPropagation();
             onClick?.();
         }}
         className={cn(
-            "rounded-md flex items-center justify-center transition-all active:scale-95 flex-shrink-0",
-            "w-9 h-9",
-            active ? "bg-foreground/10 text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            "rounded-lg flex items-center justify-center transition-all active:scale-90 flex-shrink-0",
+            "w-8 h-8",
+            active
+                ? (variant === "primary" ? "bg-black text-white dark:bg-white dark:text-black shadow-md" : "bg-black/10 dark:bg-white/20 text-black dark:text-white")
+                : "text-zinc-500 dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"
         )}
     >
         {icon}
@@ -318,14 +329,16 @@ const BlockOption = ({ label, icon, onClick }: { label: string, icon: React.Reac
             e.stopPropagation();
             onClick();
         }}
-        className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/60 active:scale-95 transition-all text-sm font-medium text-foreground/80 border border-transparent hover:border-border/50"
+        className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700/50 active:scale-95 active:bg-zinc-100 dark:active:bg-zinc-700 transition-all text-xs font-medium text-zinc-600 dark:text-zinc-300"
     >
-        <span className="p-2 bg-background rounded-md shadow-sm text-foreground">{icon}</span>
+        <div className="p-1.5 bg-white dark:bg-zinc-700 rounded-lg shadow-sm text-zinc-900 dark:text-zinc-100 border border-black/5 dark:border-white/5">
+            {icon}
+        </div>
         {label}
     </button>
 );
 
-const ColorOption = ({ color, type = "text", editor }: { color: string, type?: "text" | "background", editor: any }) => {
+const ColorSwatch = ({ color, type = "text", editor }: { color: string, type?: "text" | "background", editor: any }) => {
     const isDefault = color === "default";
     const mapColorToTailwind = (c: string) => {
         switch (c) {
@@ -338,7 +351,7 @@ const ColorOption = ({ color, type = "text", editor }: { color: string, type?: "
             case "purple": return "bg-purple-500";
             case "pink": return "bg-pink-500";
             case "red": return "bg-red-500";
-            default: return "bg-foreground";
+            default: return "bg-zinc-900 dark:bg-zinc-100";
         }
     };
 
@@ -348,21 +361,25 @@ const ColorOption = ({ color, type = "text", editor }: { color: string, type?: "
                 e.stopPropagation();
                 const block = editor.getTextCursorPosition().block;
                 if (!block) return;
-
                 const propsKey = type === "text" ? "textColor" : "backgroundColor";
                 editor.updateBlock(block, { props: { [propsKey]: color } });
             }}
             className={cn(
-                "h-8 w-full rounded-md flex items-center justify-center border transition-all active:scale-95",
-                type === "text"
-                    ? "bg-background border-border hover:bg-muted"
-                    : cn("border-transparent", isDefault ? "bg-background border-border" : mapColorToTailwind(color).replace("bg-", "bg-opacity-20 bg-"))
+                "h-9 w-full rounded-xl flex items-center justify-center transition-all active:scale-90 border",
+                type === "background"
+                    ? cn("border-transparent shadow-sm", isDefault ? "bg-white border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700" : mapColorToTailwind(color).replace("bg-", "bg-opacity-20 bg-"))
+                    : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700"
             )}
         >
             {type === "text" ? (
-                <span className={cn("text-xs font-bold", isDefault ? "text-foreground" : mapColorToTailwind(color).replace("bg-", "text-"))}>A</span>
+                <span className={cn(
+                    "text-sm font-bold",
+                    isDefault ? "text-zinc-900 dark:text-white" : mapColorToTailwind(color).replace("bg-", "text-")
+                )}>
+                    A
+                </span>
             ) : (
-                <div className={cn("w-4 h-4 rounded-full", isDefault ? "border border-border" : mapColorToTailwind(color))} />
+                isDefault ? <Eraser className="w-4 h-4 text-zinc-400" /> : <div className={cn("w-3 h-3 rounded-full", mapColorToTailwind(color))} />
             )}
         </button>
     )
