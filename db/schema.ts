@@ -58,6 +58,7 @@ export const verification = pgTable("verification", {
 export const documents = pgTable("documents", {
     id: uuid("id").defaultRandom().primaryKey(),
     title: text("title").notNull(),
+    position: integer("position").notNull().default(0),
     userId: text("userId").notNull().references(() => user.id, { onDelete: 'cascade' }),
     isArchived: boolean("isArchived").notNull().default(false),
     parentDocumentId: uuid("parentDocumentId"),

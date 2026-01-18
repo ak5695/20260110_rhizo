@@ -6,6 +6,10 @@ import {
     BlockNoteSchema,
     defaultStyleSpecs,
 } from "@blocknote/core";
+// Import lowlight for code highlighting
+import { common, createLowlight } from 'lowlight';
+const lowlight = createLowlight(common);
+
 import { createReactBlockSpec, createReactStyleSpec } from "@blocknote/react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
@@ -250,6 +254,13 @@ export const schema = BlockNoteSchema.create({
         ...defaultBlockSpecs,
         excalidraw: ExcalidrawBlock(),
         page: PageBlock(),
+        codeBlock: {
+            ...defaultBlockSpecs.codeBlock,
+            config: {
+                ...defaultBlockSpecs.codeBlock.config,
+                lowlight,
+            },
+        },
     },
     styleSpecs: {
         ...defaultStyleSpecs,

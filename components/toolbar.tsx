@@ -175,7 +175,7 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
   // ...
 
   return (
-    <div className="pl-[54px] group relative">
+    <div className="pl-8 md:pl-[54px] group relative">
       {!!icon && !preview && (
         <div className={cn(
           "flex items-center gap-x-2 group/icon pt-6",

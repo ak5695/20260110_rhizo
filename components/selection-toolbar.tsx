@@ -26,6 +26,7 @@ interface SelectionToolbarProps {
     chartMetadata?: { nodeCount: number };
     onConfirmInsert?: () => void;
     onCancel?: () => void;
+    readOnly?: boolean;
 }
 
 export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
@@ -39,6 +40,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     chartMetadata,
     onConfirmInsert,
     onCancel,
+    readOnly,
 }) => {
     const [visible, setVisible] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -217,6 +219,8 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
 
     const showToolbar = visible;
     const showStatus = status !== "idle";
+
+    if (readOnly) return null;
 
     if (!showToolbar && !showStatus && !showAiChat) return null;
 

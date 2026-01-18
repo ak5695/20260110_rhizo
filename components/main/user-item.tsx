@@ -2,6 +2,7 @@
 
 import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,14 +19,27 @@ export const UserItem = () => {
   const router = useRouter();
 
   const onSignOut = async () => {
-    await authClient.signOut({
-      fetchOptions: {
-        onSuccess: () => {
-          router.push("/");
-          router.refresh();
+    try {
+      await authClient.signOut({
+        fetchOptions: {
+          onSuccess: () => {
+            // Explicitly clear any client-side session state if needed
+            // router.push("/") will trigger a fresh layout mount
+            router.push("/");
+            router.refresh();
+          },
+          onError: (ctx) => {
+            console.error("Sign out failed:", ctx.error);
+            toast.error("Sign out failed. Please try again.");
+            // Fallback: force redirect to home
+            window.location.href = "/";
+          }
         },
-      },
-    });
+      });
+    } catch (error) {
+      console.error("Catch sign out error:", error);
+      window.location.href = "/";
+    }
   }
 
   // Generate pixel-art avatar URL if no user image is present

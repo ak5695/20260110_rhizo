@@ -1,66 +1,33 @@
-"use client";
-
-import dynamic from "next/dynamic";
-import { useMemo, useState, useEffect } from "react";
-
 import { getById } from "@/actions/documents";
-import { Toolbar } from "@/components/toolbar";
-import { Cover } from "@/components/cover";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useParams } from "next/navigation";
+import { DocumentEditorLayout } from "@/components/document/document-editor-layout";
+import { notFound } from "next/navigation";
 
-export default function DocumentIdPage() {
-  const { documentId } = useParams();
-  const Editor = useMemo(
-    () => dynamic(() => import("@/components/editor"), { ssr: false }),
-    [],
-  );
+interface DocumentPreviewPageProps {
+  params: Promise<{
+    documentId: string;
+  }>;
+}
 
-  const [document, setDocument] = useState<any>(undefined);
+const DocumentPreviewPage = async ({
+  params
+}: DocumentPreviewPageProps) => {
+  const { documentId } = await params;
 
-  useEffect(() => {
-    if (typeof documentId === "string") {
-      getById(documentId)
-        .then((doc) => {
-          // Adapt document structure if necessary (Date objects to JSON if passing to client components or ensure components handle Date)
-          // Drizzle returns Date objects for timestamps. Convex returned numbers or strings usually?
-          // Document interface in components usually expects string or number. I might need to serialize dates.
-          setDocument(doc);
-        })
-        .catch(() => setDocument(null));
-    }
-  }, [documentId]);
+  const document = await getById(documentId);
 
-  if (document === undefined) {
-    return (
-      <div>
-        <Cover.Skeleton />
-        <div className="md:max-w-3xl lg:max-w-4xl mx-auto mt-10">
-          <div className="space-y-4 pl-8 pt-4">
-            <Skeleton className="h-14 w-[50%]" />
-            <Skeleton className="h-4 w-[80%]" />
-            <Skeleton className="h-4 w-[40%]" />
-            <Skeleton className="h-4 w-[60%]" />
-          </div>
-        </div>
-      </div>
-    );
+  if (!document) {
+    return notFound();
   }
 
-  if (document === null) return <div>Not found</div>;
-
   return (
-    <div className="pb-40">
-      <Cover preview url={document.coverImage} />
-      <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
-        <Toolbar preview initialData={document} />
-        <Editor
-          documentId={document.id}
-          editable={false}
-          onChange={() => { }}
-          initialContent={document.content}
-        />
-      </div>
+    <div className="h-full dark:bg-[#1F1F1F]">
+      <DocumentEditorLayout
+        document={document}
+        documentId={document.id}
+        isReadOnly={true}
+      />
     </div>
   );
 }
+
+export default DocumentPreviewPage;

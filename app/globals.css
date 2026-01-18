@@ -116,10 +116,52 @@ body,
   background-color: #1F1F1F !important;
 }
 
-/* Dark Mode Code Block - Lighter Background */
+/* Mobile Layout Optimizations */
+@media (max-width: 768px) {
+  .bn-editor {
+    padding-left: 32px !important;
+    /* Increased to avoid blocking tool handles */
+    padding-right: 16px !important;
+  }
+}
+
+/* Adaptive Code Block Styling */
+.bn-block-outer[data-content-type="codeBlock"] .bn-block-content>div,
+.bn-block-outer[data-content-type="codeBlock"] .cm-editor {
+  border-radius: 0.5rem !important;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Light Mode Defaults */
+.bn-block-outer[data-content-type="codeBlock"] .bn-block-content>div,
+.bn-block-outer[data-content-type="codeBlock"] .cm-editor {
+  background-color: #f7f7f5 !important;
+  /* Notion-like soft gray */
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Dark Mode Overrides */
 .dark .bn-block-outer[data-content-type="codeBlock"] .bn-block-content>div,
 .dark .bn-block-outer[data-content-type="codeBlock"] .cm-editor {
-  background-color: #1E1E1E !important;
+  background-color: #202020 !important;
+  /* Notion-like dark gray, distinct from pure black bg */
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Ensure CodeMirror Gutter (Line Numbers) blends in */
+.bn-block-outer[data-content-type="codeBlock"] .cm-gutters {
+  background-color: transparent !important;
+  border-right: 1px solid transparent !important;
+  color: var(--muted-foreground) !important;
+}
+
+/* Active Line Highlight adjustments for better contrast */
+.cm-activeLine {
+  background-color: rgba(128, 128, 128, 0.05) !important;
+}
+
+.dark .cm-activeLine {
+  background-color: rgba(255, 255, 255, 0.03) !important;
 }
 
 /* --- 图文联动：企业级可视系统 (Enterprise Visual System) --- */

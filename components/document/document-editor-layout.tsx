@@ -9,6 +9,7 @@ import { Sparkles } from "lucide-react";
 import { Toolbar } from "@/components/toolbar";
 import { Cover } from "@/components/cover";
 import { Navbar } from "@/components/main/navbar";
+import { PublicNavbar } from "@/components/public/public-navbar";
 
 import { AiChatModal } from "@/components/ai-chat-modal";
 import { DocumentOutline } from "@/components/document-outline";
@@ -28,13 +29,15 @@ import { LazyExcalidraw as ExcalidrawCanvas } from "@/components/lazy-excalidraw
 interface DocumentEditorLayoutProps {
     document: any;
     documentId: string;
-    onChange: (content: string) => void;
+    onChange?: (content: string) => void;
+    isReadOnly?: boolean;
 }
 
 const DocumentEditorLayoutComponent = ({
     document,
     documentId,
-    onChange
+    onChange,
+    isReadOnly = false
 }: DocumentEditorLayoutProps) => {
 
     const isMobile = useMediaQuery("(max-width: 768px)");
@@ -68,13 +71,18 @@ const DocumentEditorLayoutComponent = ({
             {/* Top-Level Persistent Navbar - Mobile Only */}
             {isMobile && (
                 <div className="shrink-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border/40">
-                    <Navbar
-                        initialData={document}
-                        isCanvasOpen={isCanvasOpen}
-                        onToggleCanvas={toggleCanvas}
-                        isOutlineOpen={isOutlineOpen}
-                        onToggleOutline={toggleOutline}
-                    />
+                    {isReadOnly ? (
+                        <PublicNavbar document={document} />
+                    ) : (
+                        <Navbar
+                            initialData={document}
+                            isCanvasOpen={isCanvasOpen}
+                            onToggleCanvas={toggleCanvas}
+                            isOutlineOpen={isOutlineOpen}
+                            onToggleOutline={toggleOutline}
+                            onToggleChat={() => setGlobalAiChat(prev => ({ ...prev, isOpen: !prev.isOpen }))}
+                        />
+                    )}
                 </div>
             )}
 
@@ -93,41 +101,35 @@ const DocumentEditorLayoutComponent = ({
                                 {/* Desktop Navbar - Inside Editor Panel */}
                                 {!isMobile && (
                                     <div className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border/40">
-                                        <Navbar
-                                            initialData={document}
-                                            isCanvasOpen={isCanvasOpen}
-                                            onToggleCanvas={toggleCanvas}
-                                            isOutlineOpen={isOutlineOpen}
-                                            onToggleOutline={toggleOutline}
-                                        />
+                                        {isReadOnly ? (
+                                            <PublicNavbar document={document} />
+                                        ) : (
+                                            <Navbar
+                                                initialData={document}
+                                                isCanvasOpen={isCanvasOpen}
+                                                onToggleCanvas={toggleCanvas}
+                                                isOutlineOpen={isOutlineOpen}
+                                                onToggleOutline={toggleOutline}
+                                            />
+                                        )}
                                     </div>
                                 )}
 
                                 <div className="flex-1 flex flex-row overflow-hidden relative">
-                                    <div className="flex-1 h-full overflow-y-auto custom-scrollbar min-w-0">
+                                    <div className="flex-1 h-full overflow-y-auto overflow-x-hidden custom-scrollbar min-w-0">
                                         <div className="pb-40">
-                                            <Cover url={document.coverImage} />
+                                            <Cover url={document.coverImage} preview={isReadOnly} />
                                             <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
-                                                <Toolbar initialData={document} />
+                                                <Toolbar initialData={document} preview={isReadOnly} />
                                                 <Editor
-                                                    onChange={onChange}
+                                                    onChange={onChange ?? (() => { })}
                                                     initialContent={document.content}
                                                     userId={document.userId}
                                                     documentId={documentId}
+                                                    editable={!isReadOnly}
                                                 />
                                                 {/* Sticky Mobile AI Button - Aligned to Content Area */}
-                                                {isMobile && !globalAiChat.isOpen && (
-                                                    <div className="sticky bottom-10 z-30 pointer-events-none flex justify-end px-4">
-                                                        <div
-                                                            role="button"
-                                                            onClick={() => setGlobalAiChat({ isOpen: true, initialInput: "" })}
-                                                            className="pointer-events-auto h-12 w-12 rounded-full bg-rose-600 text-white shadow-xl flex items-center justify-center cursor-pointer hover:bg-rose-700 active:scale-95 transition-all group relative"
-                                                        >
-                                                            <Sparkles className="h-5 w-5 group-hover:rotate-12 transition-transform" />
-                                                            <div className="absolute inset-0 rounded-full bg-rose-600 animate-pulse -z-10 opacity-50" />
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                {/* Sticky Mobile AI Button removed as it is now in Navbar */}
                                             </div>
                                         </div>
                                     </div>
@@ -176,10 +178,13 @@ const DocumentEditorLayoutComponent = ({
                                         isOpen={globalAiChat.isOpen}
                                         onClose={() => setGlobalAiChat(prev => ({ ...prev, isOpen: false }))}
                                         initialInput={globalAiChat.initialInput}
-                                        autoSubmit={true}
+                                        autoSubmit={!!globalAiChat.initialInput}
                                         onInsertText={(text) => {
                                             window.dispatchEvent(new CustomEvent("editor:insert-text", { detail: text }));
                                         }}
+                                        variant={isMobile ? "fullscreen-panel" : "modal"}
+                                        topOffset={isMobile ? "54px" : 0}
+                                        mode="chat"
                                     />
                                 </div>
                             </div>
@@ -215,6 +220,7 @@ const DocumentEditorLayoutComponent = ({
                                 <ExcalidrawCanvas
                                     key={documentId}
                                     documentId={documentId}
+                                    viewModeEnabled={isReadOnly}
                                 />
                             </div>
                         </Panel>

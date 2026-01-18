@@ -36,6 +36,11 @@ interface ItemProps {
   label: string;
   onClick?: () => void;
   icon: LucideIcon;
+  draggable?: boolean;
+  onDragStart?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDrop?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragLeave?: (event: React.DragEvent<HTMLDivElement>) => void;
 }
 
 export const Item = ({
@@ -49,6 +54,11 @@ export const Item = ({
   level = 0,
   onExpand,
   expanded,
+  draggable,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragLeave,
 }: ItemProps) => {
   const { data: session } = authClient.useSession();
   const router = useRouter();
@@ -137,6 +147,11 @@ export const Item = ({
     <div
       onClick={onClick}
       role="button"
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragLeave={onDragLeave}
       style={{ paddingLeft: level ? `${level * 10 + 8}px` : "8px" }}
       className={cn(
         "group min-h-[26px] text-[13px] py-0.5 pr-2 w-full hover:bg-primary/5 flex items-center text-muted-foreground font-normal rounded-sm",

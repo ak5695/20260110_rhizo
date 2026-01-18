@@ -29,6 +29,14 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  interactiveWidget: "resizes-content", // Critical for mobile toolbar
+};
+
 export default function RootLayout({
   children,
 }: {

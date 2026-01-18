@@ -39,6 +39,7 @@ export const auth = betterAuth({
         process.env.BETTER_AUTH_URL,
         process.env.NEXT_PUBLIC_APP_URL,
         "https://rhizo.dufran.cn",
+        "http://localhost:3000",
     ].filter((url): url is string => !!url),
 });
 

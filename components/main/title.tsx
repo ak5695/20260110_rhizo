@@ -104,7 +104,7 @@ export const Title = ({ initialData }: TitleProps) => {
             className="font-normal h-auto p-1"
           >
             <span className={isPlaceholder ? "truncate text-muted-foreground" : "truncate"}>
-              {displayTitle}
+              {displayTitle?.length > 10 ? `${displayTitle.substring(0, 10)}...` : displayTitle}
             </span>
           </Button>
           {saveStatus !== "idle" && (

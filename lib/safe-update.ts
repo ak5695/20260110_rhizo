@@ -299,6 +299,9 @@ export const safeCreateDocument = async (params: {
   title: string;
   userId: string;
   parentDocumentId?: string;
+  content?: string;
+  coverImage?: string;
+  icon?: string;
   ipAddress?: string;
   userAgent?: string;
 }): Promise<typeof documents.$inferSelect> => {
@@ -314,6 +317,9 @@ export const safeCreateDocument = async (params: {
       userId,
       lastModifiedBy: userId,
       parentDocumentId,
+      content: params.content,
+      coverImage: params.coverImage,
+      icon: params.icon,
       version: 1,
       isArchived: false,
       isPublished: false,

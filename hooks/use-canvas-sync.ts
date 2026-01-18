@@ -8,7 +8,8 @@ import { canvasCache } from "@/lib/cache/canvas-cache";
 
 export const useCanvasSync = (
     documentId: string,
-    excalidrawAPI: any
+    excalidrawAPI: any,
+    isReadOnly: boolean = false
 ) => {
     const [canvasId, setCanvasId] = useState<string | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -157,6 +158,7 @@ export const useCanvasSync = (
     // 2. Debounced Persistence
     const debouncedSave = useCallback(
         debounce(async (cid: string, elements: readonly any[]) => {
+            if (isReadOnly) return;
             setSaveStatus("saving");
             const elementsToSave = elements.filter(el => !el.isDeleted);
             const currentSig = JSON.stringify(elementsToSave);
@@ -204,6 +206,7 @@ export const useCanvasSync = (
 
     const debouncedViewportSave = useCallback(
         debounce(async (cid: string, viewport: any) => {
+            if (isReadOnly) return;
             const currentSig = JSON.stringify(viewport);
             if (currentSig === lastViewportRef.current) return;
 

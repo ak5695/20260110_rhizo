@@ -57,6 +57,7 @@ interface ExcalidrawCanvasProps {
     documentId: string;
     className?: string;
     onChange?: (elements: readonly any[], appState: any) => void;
+    viewModeEnabled?: boolean;
 }
 
 
@@ -70,7 +71,7 @@ interface Binding {
 
 // Note: CanvasBindingLayer removed - Excalidraw has native link indicators
 
-const ExcalidrawCanvasComponent = ({ documentId, className, onChange }: ExcalidrawCanvasProps) => {
+const ExcalidrawCanvasComponent = ({ documentId, className, onChange, viewModeEnabled = false }: ExcalidrawCanvasProps) => {
     const { resolvedTheme } = useTheme();
     const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
 
@@ -117,7 +118,7 @@ const ExcalidrawCanvasComponent = ({ documentId, className, onChange }: Excalidr
         saveStatus,
         syncElements,
         syncViewport
-    } = useCanvasSync(documentId, excalidrawAPI);
+    } = useCanvasSync(documentId, excalidrawAPI, viewModeEnabled);
 
     // 1.25 Stabilize initialData to prevent "controlled to uncontrolled" errors
     // Identity stability of initialData is critical for Excalidraw's internal state management.
@@ -143,7 +144,7 @@ const ExcalidrawCanvasComponent = ({ documentId, className, onChange }: Excalidr
                 currentItemTextAlign: "left",
                 currentItemStrokeSharpness: "round",
                 currentItemRoundness: "lg",
-                viewModeEnabled: false,
+                viewModeEnabled: viewModeEnabled,
                 zenModeEnabled: false,
                 gridModeEnabled: false,
                 theme: resolvedTheme === "dark" ? "dark" : "light",

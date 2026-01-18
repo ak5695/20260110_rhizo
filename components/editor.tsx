@@ -29,6 +29,8 @@ import { FormattingToolbarController, SuggestionMenuController, getDefaultReactS
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import { schema } from "./editor/config/schema";
 import { EditorBindingOverlay } from "./editor/overlays/editor-binding-overlay";
+import CodeBlockLanguageSelector from "./editor/overlays/code-block-language-selector";
+import MobileToolbar from "./editor/mobile-toolbar";
 
 interface EditorProps {
   onChange: (value: string) => void;
@@ -939,6 +941,7 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
           setExcalidrawGenPos(position);
           setShowExcalidrawGen(true);
         }}
+        readOnly={!editable}
       />
 
       <EditorBindingOverlay
@@ -1026,6 +1029,24 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
               "after"
             );
           }
+        }}
+      />
+      <CodeBlockLanguageSelector editor={editor} />
+      <MobileToolbar
+        editor={editor}
+        onAiClick={() => {
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            setAiModalPosition({
+              top: rect.top + window.scrollY + 20,
+              left: rect.left + window.scrollX,
+            });
+          } else {
+            setAiModalPosition({ top: window.innerHeight / 2, left: window.innerWidth / 2 });
+          }
+          setShowAiModal(true);
         }}
       />
     </div >

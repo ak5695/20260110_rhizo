@@ -10,6 +10,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { db } from "@/db";
 import { canvases, canvasElements } from "@/db/canvas-schema";
+import { documents } from "@/db/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { withRetry } from "@/lib/safe-update";
 
@@ -23,11 +24,23 @@ export async function getOrCreateCanvas(documentId: string) {
       headers: await headers(),
     });
 
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" };
-    }
+    const userId = session?.user?.id;
 
-    const userId = session.user.id;
+    // Check public access if not authenticated
+    if (!userId) {
+      console.log("[getOrCreateCanvas] Guest access check for:", documentId);
+      const [parentDoc] = await db
+        .select({ isPublished: documents.isPublished })
+        .from(documents)
+        .where(eq(documents.id, documentId))
+        .limit(1);
+
+      if (!parentDoc?.isPublished) {
+        console.warn("[getOrCreateCanvas] Guest access denied (not published):", documentId);
+        return { success: false, error: "Unauthorized" };
+      }
+      console.log("[getOrCreateCanvas] Guest access granted");
+    }
 
     // Check if canvas exists
     const existing = await db
@@ -35,6 +48,8 @@ export async function getOrCreateCanvas(documentId: string) {
       .from(canvases)
       .where(eq(canvases.documentId, documentId))
       .limit(1);
+
+    console.log("[getOrCreateCanvas] Canvas lookup result:", existing.length > 0 ? "Found" : "Not Found");
 
     if (existing.length > 0) {
       // Load canvas elements
@@ -114,14 +129,22 @@ export async function getOrCreateCanvas(documentId: string) {
       };
     }
 
-    // Create new canvas with retry to handle race conditions during optimistic document creation
+    // Create new canvas (Only for authenticated users)
+    if (!userId) {
+      return {
+        success: true,
+        canvas: null,
+        elements: [],
+      };
+    }
+
     const [newCanvas] = await withRetry(async () => {
       return await db
         .insert(canvases)
         .values({
           documentId,
-          userId,
-          lastEditedBy: userId,
+          userId: userId!,
+          lastEditedBy: userId!,
           name: "Canvas",
         })
         .returning();
