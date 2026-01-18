@@ -9,7 +9,7 @@ import { Menu } from "@/components/main/menu";
 import { ShareModal } from "@/components/modals/share-modal";
 import useSWR from "swr";
 
-import { ChevronsLeft, ChevronsRight, MenuIcon, List, HelpCircle, Presentation, Sparkles } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, MenuIcon, List, HelpCircle, Presentation, Sparkles, Share } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
 import { useLayoutStore } from "@/store/use-layout-store";
@@ -91,7 +91,7 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
             className="h-6 w-6 text-muted-foreground cursor-pointer hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-sm"
           />
         )}
-        <div className="flex items-center w-full min-w-0 gap-x-2">
+        <div className="flex items-center w-full min-w-0 gap-x-1">
           <div className="flex-1 min-w-0">
             <Title initialData={document} />
           </div>
@@ -102,15 +102,20 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
                 onClick={onToggleChat}
                 className="h-8 w-8 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition"
               >
-                <Sparkles className="h-4 w-4 text-rose-600" />
+                <Sparkles className="h-5 w-5 text-rose-600" />
               </div>
             )}
             {!document.isArchived && (
               <ShareModal documentId={document.id} initialPublished={document.isPublished}>
-                <Button size="sm" variant="ghost" className={cn(document.isPublished && "text-sky-500 font-medium")}>
-                  Share
-                  {document.isPublished && <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-sky-500" />}
-                </Button>
+                <div
+                  role="button"
+                  className="h-8 w-8 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition relative"
+                >
+                  <Share className={cn("h-5 w-5", document.isPublished && "text-sky-500 fill-sky-500/20")} />
+                  {document.isPublished && (
+                    <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-sky-500 ring-2 ring-background" />
+                  )}
+                </div>
               </ShareModal>
             )}
             <Menu document={document} />
@@ -125,7 +130,7 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
                   }}
                   className="h-8 w-8 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition"
                 >
-                  <HelpCircle className="h-4 w-4" />
+                  <HelpCircle className="h-5 w-5" />
                 </div>
                 <div
                   role="button"
@@ -135,7 +140,7 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
                     isOutlineOpen && "bg-neutral-300 dark:bg-neutral-600 text-primary"
                   )}
                 >
-                  <List className="h-4 w-4" />
+                  <List className="h-5 w-5" />
                 </div>
               </>
             )}
@@ -146,11 +151,11 @@ export const Navbar = ({ initialData, isCanvasOpen, onToggleCanvas, isOutlineOpe
                 className="h-8 w-8 flex items-center justify-center rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 text-muted-foreground cursor-pointer transition"
               >
                 {isMobile ? (
-                  <Presentation className="h-4 w-4" />
+                  <Presentation className="h-5 w-5" />
                 ) : isCanvasOpen ? (
-                  <ChevronsRight className="h-4 w-4" />
+                  <ChevronsRight className="h-5 w-5" />
                 ) : (
-                  <ChevronsLeft className="h-4 w-4" />
+                  <ChevronsLeft className="h-5 w-5" />
                 )}
               </div>
             )}

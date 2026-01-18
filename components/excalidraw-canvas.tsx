@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
-import "@excalidraw/excalidraw/index.css";
+// import "@excalidraw/excalidraw/index.css"; // Moved to layout.tsx
 import { useTheme } from "next-themes";
 import { Maximize, Minimize, Loader2 } from "lucide-react";
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from "react";
@@ -16,6 +16,21 @@ import { useBindingStore } from "@/store/use-binding-store";
 import { ConnectionPointsOverlay } from "@/components/canvas/connection-points-overlay";
 import { useCanvasSync } from "@/hooks/use-canvas-sync";
 import { CanvasStatusIndicator } from "@/components/canvas/canvas-status-indicator";
+
+const DEFAULT_EXCALIDRAW_OPTIONS = {
+    currentItemFontFamily: 1, // 1: Klee (Hand-drawn), 2: Normal, 3: Code
+    currentItemFontSize: 20,
+    currentItemTextAlign: "left",
+    currentItemStrokeSharpness: "round",
+    currentItemRoundness: "lg",
+    currentItemOpacity: 100,
+    currentItemStrokeWidth: 2, // Slightly bolder for better visibility
+    currentItemRoughness: 1, // 0: Clean, 1: Sketchy, 2: Messy
+    currentItemStrokeStyle: "solid",
+    currentItemStartArrowhead: null,
+    currentItemEndArrowhead: null,
+    currentItemFillStyle: "hachure",
+};
 
 const Excalidraw = dynamic(
     async () => {
@@ -139,27 +154,12 @@ const ExcalidrawCanvasComponent = ({ documentId, className, onChange, viewModeEn
                 name: "Rhizo Workspace",
                 collaborators: new Map(),
                 isLoading: false,
-                currentItemFontFamily: 1,
-                currentItemFontSize: 20,
-                currentItemTextAlign: "left",
-                currentItemStrokeSharpness: "round",
-                currentItemRoundness: "lg",
-                viewModeEnabled: viewModeEnabled,
-                zenModeEnabled: false,
-                gridModeEnabled: false,
-                theme: resolvedTheme === "dark" ? "dark" : "light",
                 user: { name: "Collaborator", id: "user-1" },
                 // Explicitly define controlled properties to avoid "controlled to uncontrolled" error
                 zoom: { value: 1 },
                 scrollX: 0,
                 scrollY: 0,
-                currentItemOpacity: 100,
-                currentItemStrokeWidth: 1,
-                currentItemRoughness: 1,
-                currentItemStrokeStyle: "solid",
-                currentItemStartArrowhead: null,
-                currentItemEndArrowhead: null,
-                currentItemFillStyle: "hachure",
+                ...DEFAULT_EXCALIDRAW_OPTIONS,
             },
             scrollToContent: true,
         };

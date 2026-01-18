@@ -106,8 +106,12 @@ export const archive = async (id: string) => {
 }
 
 export const getSidebar = async (parentDocumentId?: string) => {
+    const start = performance.now();
     try {
         const user = await getUser()
+        const authTime = performance.now();
+        console.log(`[Performance] getSidebar Auth took: ${(authTime - start).toFixed(2)}ms`);
+
         if (!user) return []
 
         // Basic UUID format check if parentDocumentId is provided
@@ -119,7 +123,16 @@ export const getSidebar = async (parentDocumentId?: string) => {
         // ⚡ Performance: Single-Fetch Strategy
         // Fetch ALL documents for the user to build the tree client-side.
         // This eliminates N+1 waterfall requests and enables instant folder expansion.
-        const data = await db.select().from(documents)
+        const data = await db.select({
+            id: documents.id,
+            title: documents.title,
+            icon: documents.icon,
+            parentDocumentId: documents.parentDocumentId,
+            position: documents.position,
+            isArchived: documents.isArchived,
+            isPublished: documents.isPublished,
+            createdAt: documents.createdAt
+        }).from(documents)
             .where(
                 and(
                     eq(documents.userId, user.id),
@@ -127,6 +140,10 @@ export const getSidebar = async (parentDocumentId?: string) => {
                 )
             )
             .orderBy(asc(documents.position), desc(documents.createdAt)) // Sort by position, then newest
+
+        const queryTime = performance.now();
+        console.log(`[Performance] getSidebar Query took: ${(queryTime - authTime).toFixed(2)}ms`);
+        console.log(`[Performance] getSidebar Total took: ${(queryTime - start).toFixed(2)}ms`);
 
         return data
     } catch (error) {
@@ -433,39 +450,41 @@ export const update = async (args: {
                 expectedVersion,
                 userId: user.id,
             },
-        })
+        });
 
-        // Invalidate cache after update
-        await documentCache.invalidate(id)
+        // ⚡ Performance: Fire-and-Forget Background Maintenance
+        // We return success immediately so the UI is snappy.
+        // Consistency is handled eventually.
+        (async () => {
+            try {
+                // Invalidate cache after update
+                await documentCache.invalidate(id)
 
-        // 如果更新了内容，则同步块数据到结构化表（语义引擎依赖）
-        if (updates.content) {
-            const { syncBlocks } = await import("@/lib/services/semantic/block-sync");
-            await syncBlocks(id, updates.content);
-        }
+                // 如果更新了内容，则同步块数据到结构化表（语义引擎依赖）
+                if (updates.content) {
+                    const { syncBlocks } = await import("@/lib/services/semantic/block-sync");
+                    await syncBlocks(id, updates.content);
+                }
 
-        // ⚡ Performance Optimization:
-        const affectsMetadata =
-            updates.title !== undefined ||
-            updates.icon !== undefined ||
-            updates.coverImage !== undefined ||
-            updates.isPublished !== undefined;
+                const affectsMetadata =
+                    updates.title !== undefined ||
+                    updates.icon !== undefined ||
+                    updates.coverImage !== undefined ||
+                    updates.isPublished !== undefined ||
+                    updates.position !== undefined || // Also important for reorder
+                    updates.parentDocumentId !== undefined;
 
-        // DEBUG LOGGING
-        if (affectsMetadata) {
-            console.log("[UpdateAction] Triggering revalidatePath due to metadata change:",
-                Object.keys(updates).filter(k =>
-                    ['title', 'icon', 'coverImage', 'isPublished', 'parentDocumentId'].includes(k)
-                )
-            );
-        } else {
-            // console.log("[UpdateAction] Skipping revalidatePath (Content only)");
-        }
-
-        if (affectsMetadata) {
-            revalidatePath(`/documents/${id}`)
-            revalidatePath("/documents")
-        }
+                if (affectsMetadata) {
+                    // Note: revalidatePath in background might not trigger Client Router Cache purge for the *current* 
+                    // action response, but it ensures *subsequent* soft navigations get fresh data.
+                    // For sidebar reorder, client has optimistic state, so this is acceptable.
+                    revalidatePath(`/documents/${id}`)
+                    revalidatePath("/documents")
+                }
+            } catch (bgError) {
+                console.error("[UpdateAction] Background task failed:", bgError);
+            }
+        })();
 
         return result.data
     }, { maxAttempts: 3, baseDelay: 200 })
@@ -495,7 +514,11 @@ export const getLastActive = async () => {
     const user = await getUser()
     if (!user) return null
 
-    const data = await db.select().from(documents)
+    // Optimizing getLastActive to NOT fetch content
+    const data = await db.select({
+        id: documents.id,
+        updatedAt: documents.updatedAt
+    }).from(documents)
         .where(
             and(
                 eq(documents.userId, user.id),

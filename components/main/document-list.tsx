@@ -129,10 +129,26 @@ export const DocumentList = ({
   const [activeId, setActiveId] = useState<string | null>(null);
 
   // 1. Fetch Data
-  const { data: documents, mutate } = useSWR(
+  // Cache-First Strategy: Initialize with local cache synchronously!
+  const [documents, setDocuments] = useState<any[] | null>(() => {
+    if (typeof window !== "undefined") {
+      const cached = sidebarCache.getSync("root");
+      if (cached) console.log("[DocumentList] Sync Hydration:", cached.length);
+      return cached;
+    }
+    return null;
+  });
+
+  const { data: serverDocuments, mutate } = useSWR(
     "documents-all",
     () => getSidebar(),
-    { refreshInterval: 0 }
+    {
+      refreshInterval: 0,
+      onSuccess: (data) => {
+        setDocuments(data);
+        sidebarCache.set("root", data);
+      }
+    }
   );
 
   // 2. Projections
@@ -235,15 +251,29 @@ export const DocumentList = ({
 
     updates.position = newPos;
 
-    // Optimistic Update
-    const updatedDocs = documents?.map(d =>
+    // 1. Capture State for Rollback
+    const previousDocs = documents || [];
+
+    // 2. Optimistic Update (Instant)
+    const optimisticallyUpdatedDocs = previousDocs.map(d =>
       d.id === active.id ? { ...d, ...updates } : d
     );
-    mutate(updatedDocs, false);
 
-    const updatePromise = update({ id: active.id as string, ...updates });
-    updatePromise.then(() => mutate());
+    setDocuments(optimisticallyUpdatedDocs);
+    sidebarCache.set("root", optimisticallyUpdatedDocs);
+    mutate(optimisticallyUpdatedDocs, false); // Update SWR cache without revalidation
+    toast.success("Order saved");
 
+    // 3. Remote Sync (Background)
+    update({ id: active.id as string, ...updates }).catch((error) => {
+      console.error("Reorder failed:", error);
+      toast.error("Failed to sync order");
+
+      // 4. Rollback on Error
+      setDocuments(previousDocs);
+      sidebarCache.set("root", previousDocs);
+      mutate(previousDocs, false);
+    });
   };
 
   // Drag Overlay item

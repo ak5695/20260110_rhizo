@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { useTheme } from "next-themes";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
@@ -170,22 +171,29 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
 
   // Stabilize initial content to prevent editor re-construction on every render
   const stableInitialContent = useMemo(() => {
-    // 1. HMR Recovery: Check global backup first
-    // 1. HMR Recovery: Check sessionStorage backup first (More durable than window)
+    // 1. Prioritize Server/Prop Content (Source of Truth)
+    if (initialContent) {
+      // console.log("[Editor] Using initialContent from props");
+      return JSON.parse(initialContent);
+    }
+
+    // 2. Fallback to SessionStorage (Crash Recovery only)
     if (typeof window !== "undefined") {
       try {
         const backupStr = sessionStorage.getItem(`JOTION_BACKUP_${documentId}`);
         if (backupStr) {
           const backup = JSON.parse(backupStr);
-          if (Date.now() - backup.timestamp < 30000) { // 30s window (survives full reload)
-            console.log("[Editor] Recovery: Restoring content from sessionStorage");
-            return typeof backup.content === 'string' ? JSON.parse(backup.content) : backup.content;
+          // Only restore if very recent (<30s) AND we have no prop content
+          if (Date.now() - backup.timestamp < 30000) {
+            const backupContent = typeof backup.content === 'string' ? JSON.parse(backup.content) : backup.content;
+            console.log("[Editor] Restoring from SessionStorage Backup (Recovery):", backupContent ? "Found" : "Empty");
+            return backupContent;
           }
         }
       } catch (e) { console.error("Backup restore failed", e); }
     }
-    // 2. Fallback to props
-    return initialContent ? JSON.parse(initialContent) : undefined;
+
+    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps ensures this never changes after mount
 
@@ -500,7 +508,7 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
   useEffect(() => {
     if (editor) {
       if (!(editor as any)._instanceId) {
-        (editor as any)._instanceId = Math.random().toString(36).slice(2, 7);
+        (editor as any)._instanceId = Math.random().toString(18).slice(2, 7);
       }
       (editor as any)._documentId = documentId;
       (editor as any)._userId = userId;
@@ -644,6 +652,17 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
     window.addEventListener("canvas:element-status-update", handleStatusUpdate as EventListener);
     return () => window.removeEventListener("canvas:element-status-update", handleStatusUpdate as EventListener);
   }, []);
+
+  // Listen for Title "Enter" key -> Focus Editor
+  useEffect(() => {
+    const handleFocusRequest = () => {
+      if (editor) {
+        requestEditorFocus(editor, { delay: 0, position: "start" });
+      }
+    };
+    window.addEventListener("editor:focus", handleFocusRequest);
+    return () => window.removeEventListener("editor:focus", handleFocusRequest);
+  }, [editor, requestEditorFocus]);
 
   // Consolidated Surgical Update (O(1)ish - precisely targets only changed IDs)
   useEffect(() => {
@@ -913,14 +932,17 @@ const EditorComponent = ({ onChange, initialContent, editable, userId, documentI
     );
   }, [editor, documentId, router]);
 
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
   return (
-    <div className="relative group/editor">
+    <div className={cn("relative group/editor", isMobile ? "px-0" : "pl-0")}>
       <BlockNoteView
         editable={editable}
         editor={editor}
         onChange={handleEditorChange}
         theme={resolvedTheme === "dark" ? "dark" : "light"}
         formattingToolbar={false}
+        sideMenu={!isMobile}
       >
         <FormattingToolbarController />
         <SuggestionMenuController

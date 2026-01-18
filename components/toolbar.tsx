@@ -97,6 +97,8 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
     if (event.key === "Enter") {
       event.preventDefault();
       disableInput();
+      // Dispatch custom event to focus editor
+      window.dispatchEvent(new CustomEvent("editor:focus"));
     }
   };
 
@@ -175,7 +177,7 @@ export const Toolbar = ({ initialData, preview }: ToolbarProps) => {
   // ...
 
   return (
-    <div className="pl-8 md:pl-[54px] group relative">
+    <div className="pl-4 md:pl-[54px] group relative">
       {!!icon && !preview && (
         <div className={cn(
           "flex items-center gap-x-2 group/icon pt-6",

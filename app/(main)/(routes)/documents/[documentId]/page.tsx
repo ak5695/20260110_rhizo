@@ -50,15 +50,16 @@ export default function DocumentIdPage() {
       // For optimistic updates (e.g., new document creation), use store data immediately
       const storeDoc = useDocumentStore.getState().documents.get(documentId);
       if (storeDoc && activeIdRef.current === documentId) {
-        // Accept even empty content for new documents (instant switch)
-        setDocument(storeDoc);
-        documentVersionRef.current = storeDoc.version || 0;
-
-        // If we have full content, skip cache/server fetch
+        // [FIX] Only hydrate from store if we actually have CONTENT.
+        // Sidebar metadata updates might populate the store without content.
         if (storeDoc.content) {
+          console.log("[DocumentPage] Hydrated from Store, content length:", storeDoc.content.length);
+          setDocument(storeDoc);
+          documentVersionRef.current = storeDoc.version || 0;
           return;
+        } else {
+          console.log("[DocumentPage] Store hit but NO CONTENT. Skipping optimistic hydration to avoid blank editor.");
         }
-        // Otherwise continue to background fetch but UI is already showing
       }
 
       // 【Step 2】检查 IndexedDB 缓存（异步，<10ms）
@@ -106,7 +107,8 @@ export default function DocumentIdPage() {
 
             if (isWriting && document?.content) {
               console.log("[DocumentPage] Skipping server update due to active typing");
-            } else if (serverDoc.version > documentVersionRef.current || !document?.content) {
+            } else if (serverDoc.version > documentVersionRef.current || !document?.content || document.content === "[]") {
+              // Force update if version is newer OR if we have no content (empty/partial load)
 
               // Double check content deep equality if version is strictly greater but we want to be extra safe?
               // No, version should be the source of truth.

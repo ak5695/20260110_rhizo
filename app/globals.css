@@ -109,6 +109,16 @@ body,
 
 /* Custom Fixes */
 
+/* Utility: Hide Scrollbar */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* BlockNote Editor Dark Mode - Match Canvas Background */
 .dark .bn-editor,
 .dark .bn-container,
@@ -119,8 +129,7 @@ body,
 /* Mobile Layout Optimizations */
 @media (max-width: 768px) {
   .bn-editor {
-    padding-left: 32px !important;
-    /* Increased to avoid blocking tool handles */
+    padding-left: 16px !important;
     padding-right: 16px !important;
   }
 }

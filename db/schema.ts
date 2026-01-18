@@ -78,6 +78,8 @@ export const documents = pgTable("documents", {
         byUser: index("by_user_idx").on(table.userId),
         byUserParent: index("by_user_parent_idx").on(table.userId, table.parentDocumentId),
         byUpdated: index("by_updated_idx").on(table.updatedAt),
+        // Optimize getSidebar query: Filters by userId + isArchived, sorts by position
+        bySidebarSort: index("by_sidebar_sort_idx").on(table.userId, table.isArchived, table.position),
     }
 });
 

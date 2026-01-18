@@ -5,7 +5,8 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import {
     Plus, Sparkles, Undo, Redo, Keyboard,
     Bold, Italic, Underline, Strikethrough, Code,
-    Heading1, Heading2, Heading3, List, ListOrdered, CheckSquare, Quote, Type, X
+    Heading1, Heading2, Heading3, List, ListOrdered, CheckSquare, Quote, Type, X,
+    Trash2, Copy, ArrowUp, ArrowDown
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -122,36 +123,59 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
         }
     };
 
+    // Block Action Handlers
+    const handleDeleteBlock = () => {
+        const block = editor.getTextCursorPosition().block;
+        if (block) {
+            editor.removeBlocks([block]);
+            setShowBlockMenu(false);
+            menuOpenRef.current = false;
+            editor.focus();
+        }
+    };
+
+    const handleDuplicateBlock = () => {
+        const block = editor.getTextCursorPosition().block;
+        if (block) {
+            // Clone block: content and props
+            // Ensure we pass compatible PartialBlock
+            const newBlock = {
+                type: block.type,
+                props: { ...block.props }, // Shallow copy props
+                content: block.content // Content array
+            };
+
+            // Insert AFTER current
+            editor.insertBlocks([newBlock], block, "after");
+
+            setShowBlockMenu(false);
+            menuOpenRef.current = false;
+            editor.focus();
+        }
+    };
+
     return (
         <>
             {/* Toolbar */}
             <div
                 className={cn(
                     "fixed left-0 right-0 py-2 px-1 bg-background/95 border-t border-border/10 flex items-center justify-between z-[99999] shadow-[0_-4px_20px_rgba(0,0,0,0.1)] backdrop-blur-xl transition-all duration-300 ease-out",
-                    // Move toolbar up when menu is open (assuming menu height ~250px)
-                    // Actually, typical implementation keeps toolbar on top of menu or menu replaces keyboard
-                    // Let's stick toolbar to bottom, and menu pushes it up? 
-                    // Or Menu sits BEHIND toolbar?
-                    // Notion approach: Toolbar sits ON TOP of the block options.
-                    showBlockMenu ? "bottom-[280px]" : "bottom-0 safe-area-bottom pb-safe-offset-2"
+                    // Move toolbar up when menu is open
+                    showBlockMenu ? "bottom-[340px]" : "bottom-0 safe-area-bottom pb-safe-offset-2"
                 )}
                 onPointerDown={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
                 }}
             >
                 <div className="flex items-center gap-1 w-full overflow-x-auto no-scrollbar scroll-smooth px-2">
-                    {/* Close Menu Button (replaces AI/Plus when open?) OR just visible */}
-                    {/* Notion keeps the toolbar items mostly same */}
-
                     {/* Toggle Menu Button */}
                     <ToolbarButton
                         onClick={handleToggleMenu}
                         icon={<Plus className={cn("w-5 h-5 transition-transform", showBlockMenu && "rotate-45")} />}
                         active={showBlockMenu}
                     />
-
-                    {/* AI Button */}
-                    <ToolbarButton onClick={onAiClick} icon={<Sparkles className="w-5 h-5 text-purple-500 fill-purple-500/10" />} />
 
                     <div className="w-px h-5 bg-border/50 mx-1 flex-shrink-0" />
 
@@ -193,20 +217,79 @@ export const MobileToolbar = ({ editor, onAiClick }: MobileToolbarProps) => {
                     "fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t border-border/10 z-[99998] transition-transform duration-300 ease-in-out safe-area-bottom",
                     showBlockMenu ? "translate-y-0" : "translate-y-full"
                 )}
-                style={{ height: "280px" }}
+                style={{ height: "340px" }}
                 onPointerDown={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
                 }}
             >
-                <div className="p-4 grid grid-cols-2 gap-3 h-full overflow-y-auto">
-                    <BlockOption label="Text" icon={<Type className="w-4 h-4" />} onClick={() => insertBlock("paragraph")} />
-                    <BlockOption label="Heading 1" icon={<Heading1 className="w-4 h-4" />} onClick={() => insertBlock("heading", { level: 1 })} />
-                    <BlockOption label="Heading 2" icon={<Heading2 className="w-4 h-4" />} onClick={() => insertBlock("heading", { level: 2 })} />
-                    <BlockOption label="Heading 3" icon={<Heading3 className="w-4 h-4" />} onClick={() => insertBlock("heading", { level: 3 })} />
-                    <BlockOption label="Bullet List" icon={<List className="w-4 h-4" />} onClick={() => insertBlock("bulletListItem")} />
-                    <BlockOption label="Numbered List" icon={<ListOrdered className="w-4 h-4" />} onClick={() => insertBlock("numberedListItem")} />
-                    <BlockOption label="To-do List" icon={<CheckSquare className="w-4 h-4" />} onClick={() => insertBlock("checkListItem")} />
-                    <BlockOption label="Quote" icon={<Quote className="w-4 h-4" />} onClick={() => insertBlock("paragraph")} />
+                <div className="flex flex-col h-full">
+                    {/* Section: Actions */}
+                    <div className="flex items-center justify-end p-2 px-3 border-b border-border/10">
+                        <div className="flex items-center gap-1">
+                            <ToolbarButton onClick={handleDuplicateBlock} icon={<Copy className="w-5 h-5" />} />
+                            <ToolbarButton onClick={handleDeleteBlock} icon={<Trash2 className="w-5 h-5 text-red-500" />} />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        <div className="p-4 space-y-6">
+
+                            {/* Section: Turn Into */}
+                            <div className="space-y-2">
+                                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">Turn Into</h4>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <BlockOption label="Text" icon={<Type className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "paragraph")} />
+                                    <BlockOption label="Heading 1" icon={<Heading1 className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 1 })} />
+                                    <BlockOption label="Heading 2" icon={<Heading2 className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 2 })} />
+                                    <BlockOption label="Heading 3" icon={<Heading3 className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "heading", { level: 3 })} />
+                                    <BlockOption label="Bullet List" icon={<List className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "bulletListItem")} />
+                                    <BlockOption label="Numbered List" icon={<ListOrdered className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "numberedListItem")} />
+                                    <BlockOption label="To-do List" icon={<CheckSquare className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "checkListItem")} />
+                                    <BlockOption label="Quote" icon={<Quote className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "blockquote")} />
+                                    <BlockOption label="Code Block" icon={<Code className="w-4 h-4" />} onClick={() => updateRemoteBlock(editor.getTextCursorPosition().block, "codeBlock")} />
+                                </div>
+                            </div>
+
+                            {/* Section: Colors */}
+                            <div className="space-y-2">
+                                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">Colors</h4>
+                                <div className="grid grid-cols-5 gap-2">
+                                    {/* Default */}
+                                    <ColorOption color="default" editor={editor} />
+                                    <ColorOption color="gray" editor={editor} />
+                                    <ColorOption color="brown" editor={editor} />
+                                    <ColorOption color="orange" editor={editor} />
+                                    <ColorOption color="yellow" editor={editor} />
+                                    <ColorOption color="green" editor={editor} />
+                                    <ColorOption color="blue" editor={editor} />
+                                    <ColorOption color="purple" editor={editor} />
+                                    <ColorOption color="pink" editor={editor} />
+                                    <ColorOption color="red" editor={editor} />
+                                </div>
+                            </div>
+
+                            {/* Section: Backgrounds */}
+                            <div className="space-y-2">
+                                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">Backgrounds</h4>
+                                <div className="grid grid-cols-5 gap-2">
+                                    {/* Default */}
+                                    <ColorOption color="default" type="background" editor={editor} />
+                                    <ColorOption color="gray" type="background" editor={editor} />
+                                    <ColorOption color="brown" type="background" editor={editor} />
+                                    <ColorOption color="orange" type="background" editor={editor} />
+                                    <ColorOption color="yellow" type="background" editor={editor} />
+                                    <ColorOption color="green" type="background" editor={editor} />
+                                    <ColorOption color="blue" type="background" editor={editor} />
+                                    <ColorOption color="purple" type="background" editor={editor} />
+                                    <ColorOption color="pink" type="background" editor={editor} />
+                                    <ColorOption color="red" type="background" editor={editor} />
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
                 </div>
             </div>
         </>
@@ -241,5 +324,48 @@ const BlockOption = ({ label, icon, onClick }: { label: string, icon: React.Reac
         {label}
     </button>
 );
+
+const ColorOption = ({ color, type = "text", editor }: { color: string, type?: "text" | "background", editor: any }) => {
+    const isDefault = color === "default";
+    const mapColorToTailwind = (c: string) => {
+        switch (c) {
+            case "gray": return "bg-zinc-500";
+            case "brown": return "bg-stone-500";
+            case "orange": return "bg-orange-500";
+            case "yellow": return "bg-yellow-500";
+            case "green": return "bg-green-500";
+            case "blue": return "bg-blue-500";
+            case "purple": return "bg-purple-500";
+            case "pink": return "bg-pink-500";
+            case "red": return "bg-red-500";
+            default: return "bg-foreground";
+        }
+    };
+
+    return (
+        <button
+            onClick={(e) => {
+                e.stopPropagation();
+                const block = editor.getTextCursorPosition().block;
+                if (!block) return;
+
+                const propsKey = type === "text" ? "textColor" : "backgroundColor";
+                editor.updateBlock(block, { props: { [propsKey]: color } });
+            }}
+            className={cn(
+                "h-8 w-full rounded-md flex items-center justify-center border transition-all active:scale-95",
+                type === "text"
+                    ? "bg-background border-border hover:bg-muted"
+                    : cn("border-transparent", isDefault ? "bg-background border-border" : mapColorToTailwind(color).replace("bg-", "bg-opacity-20 bg-"))
+            )}
+        >
+            {type === "text" ? (
+                <span className={cn("text-xs font-bold", isDefault ? "text-foreground" : mapColorToTailwind(color).replace("bg-", "text-"))}>A</span>
+            ) : (
+                <div className={cn("w-4 h-4 rounded-full", isDefault ? "border border-border" : mapColorToTailwind(color))} />
+            )}
+        </button>
+    )
+};
 
 export default MobileToolbar;

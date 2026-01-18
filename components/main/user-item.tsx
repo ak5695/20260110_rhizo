@@ -24,9 +24,8 @@ export const UserItem = () => {
         fetchOptions: {
           onSuccess: () => {
             // Explicitly clear any client-side session state if needed
-            // router.push("/") will trigger a fresh layout mount
-            router.push("/");
-            router.refresh();
+            // router.push("/") will be handled by the layout redirect when session becomes null
+            // router.refresh();
           },
           onError: (ctx) => {
             console.error("Sign out failed:", ctx.error);

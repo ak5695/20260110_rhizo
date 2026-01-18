@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo } from "react";
+import { useState, useEffect, memo } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -58,6 +58,14 @@ const DocumentEditorLayoutComponent = ({
         isOpen: false,
         initialInput: ""
     });
+
+    // Mobile Default: Close Canvas on mount/resize to ensure "Doc Only" view
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (isMobile) {
+            useLayoutStore.getState().closeCanvas();
+        }
+    }, [isMobile]);
 
     const handleQaAsk = (prompt: string) => {
         setGlobalAiChat({
@@ -122,6 +130,7 @@ const DocumentEditorLayoutComponent = ({
                                             <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
                                                 <Toolbar initialData={document} preview={isReadOnly} />
                                                 <Editor
+                                                    key={documentId}
                                                     onChange={onChange ?? (() => { })}
                                                     initialContent={document.content}
                                                     userId={document.userId}

@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import "@excalidraw/excalidraw/index.css"; // Global import to prevent Fast Refresh headCacheNode error
 import { ThemeProvider } from "@/components/providers/theme-provider";
 
 import { Toaster } from "sonner";
