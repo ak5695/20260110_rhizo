@@ -14,6 +14,7 @@ export const useCanvasSync = (
     const [canvasId, setCanvasId] = useState<string | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
     const [initialElements, setInitialElements] = useState<any[]>([]);
+    const [initialFiles, setInitialFiles] = useState<any>({});
     const [isLoading, setIsLoading] = useState(true);
     const [saveStatus, setSaveStatus] = useState<"idle" | "pending" | "saving">("idle");
 
@@ -87,6 +88,7 @@ export const useCanvasSync = (
 
                     if (result.success && result.canvas) {
                         const serverElements = result.elements || [];
+                        const serverFiles = result.files || {};
                         const serverVersion = result.canvas.version || 0;
 
                         if (cacheLoaded && localVersionRef.current > serverVersion) {
@@ -98,6 +100,7 @@ export const useCanvasSync = (
 
                             if (!cacheLoaded) {
                                 setInitialElements(serverElements);
+                                setInitialFiles(serverFiles);
                                 lastElementsRef.current = JSON.stringify(serverElements);
 
                                 // LATE HYDRATION: Detect if we loaded empty but now have data
@@ -105,6 +108,9 @@ export const useCanvasSync = (
                                     const currentElements = excalidrawRef.current.getSceneElements();
                                     if (currentElements.length === 0) {
                                         excalidrawRef.current.updateScene({ elements: serverElements });
+                                        if (serverFiles && Object.keys(serverFiles).length > 0) {
+                                            excalidrawRef.current.addFiles(Object.values(serverFiles));
+                                        }
                                         if (result.canvas.zoom) {
                                             excalidrawRef.current.updateScene({
                                                 appState: {
@@ -170,22 +176,28 @@ export const useCanvasSync = (
 
             lastElementsRef.current = currentSig;
 
-            // Update local cache first
-            if (documentId && cid) {
-                const appState = excalidrawAPI?.getAppState();
-                const newVersion = Date.now();
+            if (res.success && typeof res.version === 'number') {
+                // Update local version to match server's authoritative version
+                const newVersion = res.version;
                 localVersionRef.current = newVersion;
 
-                canvasCache.set(documentId, {
-                    canvasId: cid,
-                    elements: [...elements],
-                    viewport: {
-                        x: appState?.scrollX || 0,
-                        y: appState?.scrollY || 0,
-                        zoom: appState?.zoom?.value || 1
-                    },
-                    version: newVersion
-                }).catch(err => console.warn('[Canvas] Cache update failed:', err));
+                // Update cache with new version
+                if (documentId && cid) {
+                    const appState = excalidrawAPI?.getAppState();
+                    canvasCache.set(documentId, {
+                        canvasId: cid,
+                        elements: [...elements],
+                        viewport: {
+                            x: appState?.scrollX || 0,
+                            y: appState?.scrollY || 0,
+                            zoom: appState?.zoom?.value || 1
+                        },
+                        version: newVersion
+                    }).catch(err => console.warn('[Canvas] Cache update failed:', err));
+                }
+            } else {
+                // Fallback if server doesn't return version (shouldn't happen with new action)
+                console.warn('[Canvas] Server save didn\'t return version, sync might vary');
             }
 
             try {
@@ -229,6 +241,7 @@ export const useCanvasSync = (
         isLoaded,
         isLoading,
         initialElements,
+        initialFiles,
         saveStatus,
         setSaveStatus,
         syncElements: debouncedSave,

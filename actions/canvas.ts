@@ -9,9 +9,10 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { db } from "@/db";
-import { canvases, canvasElements } from "@/db/canvas-schema";
+import { canvases, canvasElements, canvasFiles, documentCanvasBindings } from "@/db/canvas-schema";
 import { documents } from "@/db/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
+import { BinaryFileData } from "@excalidraw/excalidraw/types";
 import { withRetry } from "@/lib/safe-update";
 
 /**
@@ -63,7 +64,28 @@ export async function getOrCreateCanvas(documentId: string) {
           )
         );
 
-      // ============================================================================
+      // Fetch files
+      const files = await db
+        .select()
+        .from(canvasFiles)
+        .where(eq(canvasFiles.canvasId, existing[0].id));
+
+      // Transform files to Excalidraw BinaryFileData format
+      // Note: We need to map our DB schema to what Excalidraw expects
+      // Using 'any' for the accumulator to bypass strict Excalidraw type checks for now 
+      // as we are just passing this data through.
+      const filesMap = files.reduce((acc: any, file) => {
+        acc[file.id] = {
+          id: file.id,
+          dataURL: file.dataUrl,
+          mimeType: file.mimeType as any,
+          created: file.created.getTime(),
+          lastRetrieved: file.lastRetrieved?.getTime() || Date.now(),
+        };
+        return acc;
+      }, {});
+
+      // Fetch bindings
       // ENTERPRISE-GRADE ELEMENT ORDERING FIX
       // ============================================================================
       // Excalidraw has a strict invariant: for bound elements, the CONTAINER must
@@ -126,6 +148,7 @@ export async function getOrCreateCanvas(documentId: string) {
         success: true,
         canvas: existing[0],
         elements: sorted,
+        files: filesMap,
       };
     }
 
@@ -159,6 +182,7 @@ export async function getOrCreateCanvas(documentId: string) {
       success: true,
       canvas: newCanvas,
       elements: [],
+      files: {},
     };
   } catch (error) {
     console.error("[getOrCreateCanvas] Error:", error);
@@ -166,6 +190,43 @@ export async function getOrCreateCanvas(documentId: string) {
       success: false,
       error: error instanceof Error ? error.message : "Failed to get or create canvas",
     };
+  }
+}
+
+/**
+ * Save a single canvas file (persistent storage)
+ */
+export async function saveCanvasFile(canvasId: string, file: BinaryFileData) {
+  try {
+    const session = await auth.api.getSession({
+      headers: await headers(),
+    });
+
+    if (!session?.user) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const userId = session.user.id;
+
+    await db.insert(canvasFiles).values({
+      id: file.id,
+      canvasId: canvasId,
+      dataUrl: file.dataURL,
+      mimeType: file.mimeType,
+      created: new Date(file.created),
+      uploadedBy: userId,
+      lastRetrieved: new Date(),
+    }).onConflictDoUpdate({
+      target: [canvasFiles.id],
+      set: {
+        lastRetrieved: new Date(),
+      }
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[saveCanvasFile] Error:", error);
+    return { success: false, error: "Failed to save canvas file" };
   }
 }
 
@@ -304,13 +365,14 @@ export async function saveCanvasElements(
     }
 
     // Update canvas metadata
-    await db.update(canvases)
+    const [updatedCanvas] = await db.update(canvases)
       .set({
         updatedAt: new Date(),
         lastEditedBy: userId,
         version: canvas.version + 1,
       })
-      .where(eq(canvases.id, canvasId));
+      .where(eq(canvases.id, canvasId))
+      .returning({ version: canvases.version });
 
     const duration = Date.now() - startTime;
     console.log(`[saveCanvasElements] Saved ${elements.length} elements in ${duration}ms`);
@@ -319,8 +381,10 @@ export async function saveCanvasElements(
       success: true,
       elementsProcessed: elements.length,
       insertedCount,
+      insertedCount,
       updatedCount,
       duration,
+      version: updatedCanvas?.version
     };
   } catch (error) {
     const duration = Date.now() - startTime;

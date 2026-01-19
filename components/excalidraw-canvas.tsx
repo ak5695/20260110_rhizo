@@ -15,6 +15,7 @@ import { useNavigationStore, useElementTarget } from "@/store/use-navigation-sto
 import { useBindingStore } from "@/store/use-binding-store";
 import { ConnectionPointsOverlay } from "@/components/canvas/connection-points-overlay";
 import { useCanvasSync } from "@/hooks/use-canvas-sync";
+import { useCanvasFilePersistence } from "@/hooks/use-canvas-file-persistence";
 import { CanvasStatusIndicator } from "@/components/canvas/canvas-status-indicator";
 
 const DEFAULT_EXCALIDRAW_OPTIONS = {
@@ -71,7 +72,7 @@ const Excalidraw = dynamic(
 interface ExcalidrawCanvasProps {
     documentId: string;
     className?: string;
-    onChange?: (elements: readonly any[], appState: any) => void;
+    onChange?: (elements: readonly any[], appState: any, files: any) => void;
     viewModeEnabled?: boolean;
 }
 
@@ -130,6 +131,7 @@ const ExcalidrawCanvasComponent = ({ documentId, className, onChange, viewModeEn
         isLoaded,
         isLoading,
         initialElements,
+        initialFiles,
         saveStatus,
         syncElements,
         syncViewport
@@ -149,6 +151,7 @@ const ExcalidrawCanvasComponent = ({ documentId, className, onChange, viewModeEn
         // Capture initial state - let Excalidraw handle ALL colors via theme prop
         const data = {
             elements: initialElements || [],
+            files: initialFiles || {},
             appState: {
                 // Let Excalidraw's theme handle ALL colors (background, stroke, etc.)
                 name: "Rhizo Workspace",
@@ -187,6 +190,9 @@ const ExcalidrawCanvasComponent = ({ documentId, className, onChange, viewModeEn
             console.log("[Canvas] Theme synced to:", newTheme);
         }
     }, [resolvedTheme, excalidrawAPI]);
+
+    // Handle File Persistence (R2 Uploads)
+    const { syncFiles } = useCanvasFilePersistence(canvasId || "", excalidrawAPI);
 
     const [isDragOver, setIsDragOver] = useState(false);
     const [bindings, setBindings] = useState<any[]>([]);
@@ -346,13 +352,16 @@ const ExcalidrawCanvasComponent = ({ documentId, className, onChange, viewModeEn
     );
 
     // Excalidraw onChange fires on EVERY event
-    const handleCanvasChange = useCallback((elements: readonly any[], appState: any) => {
+    const handleCanvasChange = useCallback((elements: readonly any[], appState: any, files: any) => {
         if (!isLoaded || !canvasId) return;
 
         // Propagate to parent if needed
         if (onChange) {
-            onChange([...elements], appState);
+            onChange([...elements], appState, files);
         }
+
+        // Upload new files to R2
+        syncFiles(files);
 
         // 【即时同步】检测删除并立即更新客户端状态
         detectAndCleanupDeletedBindings(elements);
@@ -407,7 +416,7 @@ const ExcalidrawCanvasComponent = ({ documentId, className, onChange, viewModeEn
             y: appState.scrollY,
             zoom: appState.zoom.value
         });
-    }, [isLoaded, canvasId, onChange, detectAndCleanupDeletedBindings, bindings, jumpToBlock, syncElements, syncViewport]);
+    }, [isLoaded, canvasId, onChange, detectAndCleanupDeletedBindings, bindings, jumpToBlock, syncElements, syncViewport, syncFiles]);
 
     // 3. Real-time Content Sync Listener (Document -> Canvas)
     useEffect(() => {

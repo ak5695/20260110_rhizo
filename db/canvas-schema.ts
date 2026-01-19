@@ -6,6 +6,7 @@
  * - Element-level granularity for efficient updates
  * - Compound node support with hierarchical structure
  * - Document binding for semantic connections
+ * - [NEW] Persistent file/image storage via R2
  */
 
 import { pgTable, text, integer, boolean, timestamp, uuid, index, jsonb, real, varchar } from "drizzle-orm/pg-core";
@@ -98,6 +99,27 @@ export const canvasElements = pgTable("canvas_elements", {
     byBoundNode: index("elements_by_bound_node_idx").on(table.boundSemanticNodeId),
     spatial: index("elements_spatial_idx").on(table.canvasId, table.x, table.y),
 }));
+
+/**
+ * Canvas Files - Persistent storage for binary files (Images, etc.)
+ * Used to populate Excalidraw's `files` property.
+ */
+export const canvasFiles = pgTable("canvas_files", {
+    id: text("id").primaryKey(), // Excalidraw File ID (e.g. "hash...")
+    canvasId: uuid("canvas_id").notNull().references(() => canvases.id, { onDelete: 'cascade' }),
+
+    dataUrl: text("data_url").notNull(), // The R2 Public URL
+    mimeType: varchar("mime_type", { length: 100 }).notNull(),
+
+    // For sorting/cleanup
+    created: timestamp("created").defaultNow().notNull(), // Mapped to Excalidraw 'created'
+    lastRetrieved: timestamp("last_retrieved"),
+
+    uploadedBy: text("uploaded_by").references(() => user.id),
+}, (table) => ({
+    byCanvas: index("files_by_canvas_idx").on(table.canvasId),
+}));
+
 
 /**
  * Compound Nodes - Groups of elements that move together
@@ -369,6 +391,7 @@ export const canvasesRelations = relations(canvases, ({ one, many }) => ({
     changeLog: many(canvasChangeLog),
     bindings: many(documentCanvasBindings),
     sessions: many(collaborationSessions),
+    files: many(canvasFiles),
 }));
 
 export const canvasElementsRelations = relations(canvasElements, ({ one }) => ({
@@ -385,6 +408,18 @@ export const canvasElementsRelations = relations(canvasElements, ({ one }) => ({
         references: [semanticNodes.id],
     }),
 }));
+
+export const canvasFilesRelations = relations(canvasFiles, ({ one }) => ({
+    canvas: one(canvases, {
+        fields: [canvasFiles.canvasId],
+        references: [canvases.id],
+    }),
+    user: one(user, {
+        fields: [canvasFiles.uploadedBy],
+        references: [user.id],
+    }),
+}));
+
 
 export const compoundNodesRelations = relations(compoundNodes, ({ one, many }) => ({
     canvas: one(canvases, {
