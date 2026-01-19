@@ -176,35 +176,37 @@ export const useCanvasSync = (
 
             lastElementsRef.current = currentSig;
 
-            if (res.success && typeof res.version === 'number') {
-                // Update local version to match server's authoritative version
-                const newVersion = res.version;
-                localVersionRef.current = newVersion;
-
-                // Update cache with new version
-                if (documentId && cid) {
-                    const appState = excalidrawAPI?.getAppState();
-                    canvasCache.set(documentId, {
-                        canvasId: cid,
-                        elements: [...elements],
-                        viewport: {
-                            x: appState?.scrollX || 0,
-                            y: appState?.scrollY || 0,
-                            zoom: appState?.zoom?.value || 1
-                        },
-                        version: newVersion
-                    }).catch(err => console.warn('[Canvas] Cache update failed:', err));
-                }
-            } else {
-                // Fallback if server doesn't return version (shouldn't happen with new action)
-                console.warn('[Canvas] Server save didn\'t return version, sync might vary');
-            }
-
             try {
                 const res = await saveCanvasElements(cid, [...elements]);
+
                 if (!res.success) {
                     console.error("[Canvas] Failed to save elements:", res.error);
                     toast.error("Failed to auto-save canvas");
+                    return;
+                }
+
+                if (typeof res.version === 'number') {
+                    // Update local version to match server's authoritative version
+                    const newVersion = res.version;
+                    localVersionRef.current = newVersion;
+
+                    // Update cache with new version
+                    if (documentId && cid) {
+                        const appState = excalidrawAPI?.getAppState();
+                        canvasCache.set(documentId, {
+                            canvasId: cid,
+                            elements: [...elements],
+                            viewport: {
+                                x: appState?.scrollX || 0,
+                                y: appState?.scrollY || 0,
+                                zoom: appState?.zoom?.value || 1
+                            },
+                            version: newVersion
+                        }).catch(err => console.warn('[Canvas] Cache update failed:', err));
+                    }
+                } else {
+                    // Fallback if server doesn't return version (shouldn't happen with new action)
+                    console.warn('[Canvas] Server save didn\'t return version, sync might vary');
                 }
             } catch (err) {
                 console.error("[Canvas] Failed to save elements - exception:", err);

@@ -381,7 +381,6 @@ export async function saveCanvasElements(
       success: true,
       elementsProcessed: elements.length,
       insertedCount,
-      insertedCount,
       updatedCount,
       duration,
       version: updatedCanvas?.version
